@@ -1,0 +1,312 @@
+GAME_GUIDANCE — Arena War Simulator (Pygame)
+0) Purpose of This Document
+
+This document defines what the game is at a systems level: the core gameplay loop, win conditions, simulation rules, and the minimum feature set required for a “vertical slice” that is actually playable.
+
+Other documents will define specifics:
+
+unit_guidance: unit tiers, stats, costs, AI behavior knobs, spawn rules by tier
+
+map_guidance: map size, lanes/paths, bases, graveyard locations, capture rules (if any)
+
+ui_guidance: exact layout, buttons, panels, tooltips, input, zoom controls
+
+This game_guidance doc is the top-level contract. If something is not specified here, it must be specified in one of the other guidance docs before implementation.
+
+1) Game Pitch
+
+A pixel-graphics, top-down battlefield simulator inspired by the old Alterac Valley feeling: large groups of NPC units from two factions continuously clash across a big map. The player controls macro decisions (upgrades, reinforcements, spending) rather than direct unit micromanagement. The opponent is an AI faction with similar economic rules.
+
+Units are represented as dots on the strategic map and become more visually detailed when zoomed in (still pixel style). The battlefield contains multiple graveyards per side. When units die, they respawn at the nearest controlled graveyard after a delay and rejoin the war.
+
+Each side has a base containing a boss unit. When a boss dies, the match ends immediately.
+
+2) Core Game Loop (Minute-to-Minute)
+
+Units spawn/respawn at graveyards and march toward objectives (default behavior).
+
+When enemy units enter aggro range, units engage (auto-combat).
+
+Units die → enter respawn queue → respawn at graveyard after delay.
+
+Player earns Gold from enemy kills (and possibly passive income; if used, define in another doc).
+
+Player spends Gold on:
+
+upgrades (global faction upgrades or tier upgrades)
+
+additional units / reinforcements (queue-based)
+
+Over time, one side pushes into the other side’s territory.
+
+When attackers reach the enemy base and defeat the boss, the game ends.
+
+3) Win / Loss Conditions
+
+Primary win condition
+
+Defeat the enemy Boss Unit in the enemy base.
+
+Primary loss condition
+
+Your Boss Unit is defeated.
+
+Match ends immediately on boss defeat. No overtime.
+
+4) Battlefield Simulation Rules
+4.1 Time Model
+
+Game runs in real-time at a target of 60 FPS simulation + rendering.
+
+Use a fixed timestep or “delta time” model, but combat outcomes must be consistent and not frame-rate dependent.
+
+4.2 Units
+
+Every unit must have, at minimum:
+
+Faction: PLAYER or ENEMY
+
+Tier (e.g., T1, T2, T3…; defined in unit_guidance)
+
+Position (float world coords)
+
+Move speed
+
+Health / Max health
+
+Attack damage
+
+Attack cooldown (seconds)
+
+Attack range (melee units can have short range)
+
+Aggro range (detection radius)
+
+Targeting rules (see 4.4)
+
+State (marching, fighting, retreating if used, dead, respawning)
+
+4.3 Movement
+
+Units travel along paths/lanes defined by the map (see map_guidance).
+
+Units should not require complex pathfinding for MVP; lanes can be spline/waypoint chains.
+
+Units should not stack into a single pixel: implement simple separation (“soft collision”) so dots spread slightly.
+
+4.4 Aggro and Combat Targeting
+
+When a unit is alive:
+
+If it has a valid target in range, it attacks based on cooldown.
+
+If no target, it searches for enemies within aggro range.
+
+Target selection priority (MVP, can be expanded later):
+
+nearest enemy within aggro range
+
+tie-breaker: lowest current HP
+
+If target leaves aggro range, unit drops target and resumes marching.
+
+Combat resolution:
+
+Damage is applied as discrete hits when cooldown completes.
+
+No RNG required for MVP unless explicitly added later.
+
+4.5 Death and Respawn
+
+When HP <= 0 → unit enters dead state and is removed from active battlefield.
+
+Unit is added to a respawn queue with:
+
+respawn time (timestamp)
+
+respawn location = nearest graveyard owned by that unit’s faction (ownership rules defined in map doc)
+
+At respawn time:
+
+unit is re-created (or revived) at graveyard spawn point
+
+returns to marching behavior
+
+4.6 Graveyards
+
+There are multiple graveyards per side, placed across the map.
+
+Graveyards serve as respawn points.
+
+Ownership model for MVP:
+
+Each graveyard starts pre-owned by a faction.
+
+Graveyards can be capturable OR fixed ownership.
+
+If capturable, capture mechanics must be defined in map_guidance (capture radius, time, contest rules).
+
+If capture is not implemented for MVP, graveyards are fixed and “nearest owned” is just nearest by faction.
+
+5) Economy (Gold)
+5.1 Gold Gain
+
+Player gains Gold when an enemy unit dies.
+
+Gold awarded is based on unit tier/value (defined in unit_guidance).
+
+AI enemy uses the same rules for fairness, even if the AI “spends” differently.
+
+5.2 Gold Spend
+
+Gold can be spent on:
+
+Upgrades (global faction upgrades like damage%, health%, respawn speed%, unit cap increase, etc.)
+
+Reinforcements (purchase additional units that join at a spawn point)
+
+Spend rules for MVP:
+
+Purchases happen instantly (click button → cost deducted → unit added to reinforcement queue or spawned).
+
+If a queue system is used (recommended), define:
+
+build time per unit type
+
+max queue size
+
+where units appear when built
+
+6) Unit Population and Performance Constraints
+
+The game is intended to support lots of NPCs.
+
+MVP target: 200–500 active units without chugging.
+
+Therefore:
+
+Avoid O(N^2) checks for aggro across all units.
+
+Use spatial partitioning (grid buckets / quadtree) for “find enemies in radius”.
+
+This is mandatory for the LLM coder: implement a simple uniform grid spatial hash for enemy queries.
+
+7) Camera + Zoom (Top-Down Map)
+
+World has a large “battlefield coordinate space”.
+
+Player views it through a camera that supports:
+
+pan (mouse drag or WASD)
+
+zoom in/out (mouse wheel)
+
+Zoom affects:
+
+how much of the map is visible
+
+how units are rendered (dots at far zoom; more detail at close zoom)
+
+Minimum zoom behavior:
+
+At far zoom: units are colored dots.
+
+At closer zoom: show health bars (tiny) and possibly tiny pixel sprites (optional MVP; dots are acceptable).
+
+8) UI Overview (High Level Only)
+
+UI layout is strict (detailed behavior in ui_guidance):
+
+Screen is divided into:
+
+Top 80%: Map viewport (camera world rendering)
+
+Bottom 20%: Control ribbon (upgrades, buy units, gold display, minimap optional)
+
+Input responsibilities:
+
+Mouse wheel zooms the map (only when cursor is over map area).
+
+Clicking UI buttons only affects purchases/upgrades and does not move the camera.
+
+9) AI Opponent (MVP Requirements)
+
+The AI is not tactical micromanagement. It is a macro spender:
+
+AI receives Gold from kills (same as player).
+
+AI periodically decides to:
+
+buy reinforcements
+
+buy upgrades
+
+MVP AI policy (simple but functional):
+
+Every X seconds:
+
+if behind in unit count → buy cheapest units
+
+else buy an upgrade if affordable
+
+else buy mid-tier unit if affordable
+
+(Exact AI policy can be refined later; this is enough to create a “playing against something” feel.)
+
+10) Game States
+
+Must implement these states cleanly:
+
+Main Menu
+
+Start Game
+
+Quit
+
+In-Game
+
+simulation running
+
+UI ribbon active
+
+Game Over
+
+display winner
+
+return to menu / restart
+
+11) Minimum Playable Prototype Definition (Non-Negotiable)
+
+The MVP is considered “done” only when all are true:
+
+Units spawn for both factions and move along lanes.
+
+Units detect enemies in aggro range and fight.
+
+Units die and respawn at graveyards.
+
+Gold is earned on kills and displayed.
+
+Player can spend gold to buy at least 2 unit types and 2 upgrades.
+
+AI opponent spends gold and scales over time.
+
+Boss units exist and can be killed.
+
+Killing boss ends the match and shows winner.
+
+Map occupies top 80% of screen; bottom ribbon occupies bottom 20%.
+
+Camera pan + zoom works.
+
+12) Implementation Boundaries (For the LLM Coder)
+
+Use Pygame only (no external engines).
+
+Use deterministic combat (no RNG) unless later specified.
+
+Prioritize performance and clarity over fancy visuals.
+
+All constants must be centralized (e.g., config.py) so tuning is easy.
+
+You MUST NOT make any changes to this document. It is considered sacred. You are also not allowed to create your own copies or versions of this document.
