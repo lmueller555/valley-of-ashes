@@ -513,3 +513,177 @@ update_decision(dt)
 attempt_purchase(unit_type, lane_bias)
 
 Keep AI state minimal and serializable.
+
+## APPENDIX
+
+This appendix is a **single, centralized tuning table** for the macro AI. All values here are canonical defaults. Adjusting these values is the preferred way to tune AI difficulty and behavior without rewriting logic.
+
+---
+
+### A) Core Timing + Spend Caps
+
+| Key                       | Default | Meaning                                                                |
+| ------------------------- | ------: | ---------------------------------------------------------------------- |
+| `AI_SENSE_INTERVAL_S`     |     1.0 | How often the AI recomputes metrics (cached).                          |
+| `AI_DECISION_INTERVAL_S`  |     5.0 | How often the AI runs a decision chain and buys units.                 |
+| `MAX_PURCHASES_PER_TICK`  |       8 | Maximum number of unit purchases per decision tick.                    |
+| `SPEND_FRACTION_PER_TICK` |    0.65 | Max fraction of current gold AI is allowed to spend per decision tick. |
+| `BUY_COOLDOWN_GRUNT_S`    |     0.0 | Cooldown after buying a Grunt.                                         |
+| `BUY_COOLDOWN_LIEUT_S`    |     2.0 | Cooldown after buying a Lieutenant.                                    |
+| `BUY_COOLDOWN_CAVALRY_S`  |     3.0 | Cooldown after buying Cavalry.                                         |
+
+---
+
+### B) Mode Selection Thresholds (Priority Order)
+
+| Mode Trigger    | Key                                 | Default | Notes                                                                       |
+| --------------- | ----------------------------------- | ------: | --------------------------------------------------------------------------- |
+| Base Defense    | `BOSS_THREAT_TRIGGER`               |    0.20 | Triggers if `1 - (boss_hp/boss_max_hp) >= 0.20`.                            |
+| Tower Defense   | `TOWER_ENEMY_IN_RADIUS_TRIGGER`     |       2 | Triggers if enemy units in capture radius ≥ this and tower is `VULNERABLE`. |
+| Tower Defense   | `TOWER_OCCUPY_TIMER_TRIGGER_S`      |     1.0 | Triggers if tower is `VULNERABLE` and enemy occupy timer > this.            |
+| Captain Defense | `CAPTAIN_ENEMY_IN_RADIUS_TRIGGER`   |       8 | Triggers if captain alive and enemies near bunker ≥ this.                   |
+| Offense         | `OFFENSE_TOWER_VULNERABLE_REQUIRED` |    True | If any enemy tower is `VULNERABLE` (archers dead), prefer offense mode.     |
+| Offense         | `OFFENSE_TOWER_ADVANTAGE_TRIGGER`   |       2 | If enemy towers standing ≤ AI towers standing - 2, press offense.           |
+| Recovery        | `RECOVERY_KILL_DIFF_TRIGGER`        |     -10 | Triggers if `kill_diff_60s <= -10`.                                         |
+| Recovery        | `RECOVERY_UNIT_RATIO_TRIGGER`       |    0.70 | Triggers if AI mobile units < 70% of enemy.                                 |
+
+Mode priority is always:
+
+1. Base Defense
+2. Tower Defense
+3. Captain Defense
+4. Offense
+5. Recovery
+6. Balanced
+
+---
+
+### C) Lane Floors (Minimum AI Presence)
+
+| Lane   | Key                 | Default |
+| ------ | ------------------- | ------: |
+| WEST   | `LANE_FLOOR_WEST`   |      18 |
+| CENTER | `LANE_FLOOR_CENTER` |      22 |
+| EAST   | `LANE_FLOOR_EAST`   |      18 |
+
+**Lane floor enforcement disabled only in Base Defense Mode.**
+
+---
+
+### D) Unit Mix Ratios by Model (Must Sum to 1.0)
+
+#### Model A — Balanced Pressure
+
+| Unit       | Key         | Default |
+| ---------- | ----------- | ------: |
+| Grunt      | `MIX_BAL_G` |    0.70 |
+| Lieutenant | `MIX_BAL_L` |    0.20 |
+| Cavalry    | `MIX_BAL_C` |    0.10 |
+
+#### Model B — Tower Defense
+
+| Unit       | Key          | Default |
+| ---------- | ------------ | ------: |
+| Grunt      | `MIX_TDEF_G` |    0.50 |
+| Lieutenant | `MIX_TDEF_L` |    0.10 |
+| Cavalry    | `MIX_TDEF_C` |    0.40 |
+
+#### Model C — Base Defense
+
+| Unit       | Key          |                         Default |
+| ---------- | ------------ | ------------------------------: |
+| Grunt      | `MIX_BDEF_G` |                            0.45 |
+| Lieutenant | `MIX_BDEF_L` |                            0.55 |
+| Cavalry    | `MIX_BDEF_C` | 0.00 *(cap at 0.05 if enabled)* |
+
+#### Model D — Objective Offense (Tower Rush)
+
+| Unit       | Key         | Default |
+| ---------- | ----------- | ------: |
+| Grunt      | `MIX_OFF_G` |    0.50 |
+| Lieutenant | `MIX_OFF_L` |    0.20 |
+| Cavalry    | `MIX_OFF_C` |    0.30 |
+
+#### Model E — Recovery / Comeback
+
+Stage 1 (until parity restored):
+
+| Unit       | Key          | Default |
+| ---------- | ------------ | ------: |
+| Grunt      | `MIX_REC1_G` |    0.90 |
+| Lieutenant | `MIX_REC1_L` |    0.10 |
+| Cavalry    | `MIX_REC1_C` |    0.00 |
+
+Stage 2 (switch back to Balanced):
+
+| Key                        | Default | Meaning                                           |
+| -------------------------- | ------: | ------------------------------------------------- |
+| `RECOVERY_EXIT_KILL_DIFF`  |      -3 | If `kill_diff_60s >= -3`, exit Recovery.          |
+| `RECOVERY_EXIT_UNIT_RATIO` |    0.90 | If AI mobile units ≥ 90% of enemy, exit Recovery. |
+
+---
+
+### E) Lane Bias Rules (Objective Targeting)
+
+| Rule                   | Key                      | Default |
+| ---------------------- | ------------------------ | ------: |
+| West lane if tower x < | `LANE_BIAS_WEST_X`       |    1200 |
+| Center lane if         | `LANE_BIAS_CENTER_X_MIN` |    1200 |
+| Center lane if         | `LANE_BIAS_CENTER_X_MAX` |    1800 |
+| East lane if tower x > | `LANE_BIAS_EAST_X`       |    1800 |
+
+Balanced lane distribution helper:
+
+* Bias purchases toward lane with lowest `net_lane_pressure` first.
+* If tie, bias CENTER.
+
+Base defense always biases CENTER unless:
+
+* `net_lane_pressure[WEST] < -10` (secondary bias WEST)
+* `net_lane_pressure[EAST] < -10` (secondary bias EAST)
+
+---
+
+### F) Contested Objective Heuristics
+
+| Key                      | Default | Meaning                                                                                  |
+| ------------------------ | ------: | ---------------------------------------------------------------------------------------- |
+| `CONTEST_MIN_UNITS_SEND` |       6 | If tower occupy timer running, aim to get at least this many bodies into radius quickly. |
+| `CONTEST_CAVALRY_FIRST`  |    True | In tower defense, prioritize buying cavalry before grunts if cooldown permits.           |
+
+---
+
+### G) Difficulty Presets (No Cheating)
+
+**Easy**
+
+* `AI_DECISION_INTERVAL_S = 7.0`
+* `SPEND_FRACTION_PER_TICK = 0.50`
+* `MAX_PURCHASES_PER_TICK = 6`
+* Force Model A ratios but clamp cavalry to 0.05.
+
+**Normal (Default)**
+
+* Use table defaults.
+
+**Hard**
+
+* `AI_DECISION_INTERVAL_S = 4.0`
+* `SPEND_FRACTION_PER_TICK = 0.75`
+* `MAX_PURCHASES_PER_TICK = 10`
+* Slightly increase defense sensitivity:
+
+  * `BOSS_THREAT_TRIGGER = 0.15`
+  * `TOWER_ENEMY_IN_RADIUS_TRIGGER = 1`
+
+---
+
+## SACRED DOCUMENT RULES (Non-Negotiable)
+
+**This AI tuning appendix is sacred.** The LLM coder must follow these rules:
+
+1. The LLM coder is **not allowed to modify** this appendix (no edits, rewrites, “improvements,” or refactors).
+2. The LLM coder is **not allowed to create copies, alternate versions, summaries, or derivative “new guidance” documents** intended to replace or supersede this appendix.
+3. If the LLM coder believes changes are necessary, it must stop and request explicit instructions from the human author.
+
+Failure to follow these rules is a critical implementation failure.
