@@ -128,7 +128,7 @@ def draw_ribbon(surface, font):
     surface.blit(sub, (20, config.MAP_VIEW_HEIGHT + 50))
 
 
-def draw_debug(surface, font, camera: Camera, toggle):
+def draw_debug(surface, font, camera: Camera, geom, toggle):
     if not toggle:
         return
     mx, my = pygame.mouse.get_pos()
@@ -139,6 +139,9 @@ def draw_debug(surface, font, camera: Camera, toggle):
         f"Mouse: ({mx:.0f}, {my:.0f}) -> World ({cursor_world[0]:.1f}, {cursor_world[1]:.1f})",
         "F1: toggle debug overlay",
         "SPACE: center on home graveyard",
+        f"Towers: {len(geom.towers)} (capture r={config.TOWER_CAPTURE_RADIUS_PX})",
+        f"Bunkers: {len(geom.bunkers)}",
+        f"Graveyards: {len(geom.graveyards)}",
     ]
     y = 10
     for line in lines:
@@ -208,7 +211,7 @@ def main():
         screen.fill(config.COLOR_BG)
         draw_map(screen, camera, geom)
         draw_ribbon(screen, font)
-        draw_debug(screen, font, camera, debug_overlay)
+        draw_debug(screen, font, camera, geom, debug_overlay)
         pygame.display.flip()
 
     pygame.quit()
