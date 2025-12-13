@@ -139,3 +139,14 @@ def build_north_towers():
 
 def build_north_tower_approaches():
     return {key.replace("S", "N"): (pos[0], mirror_y(pos[1])) for key, pos in TOWER_APPROACH_SOUTH.items()}
+
+
+def apply_screen_resolution(width: int, height: int):
+    global SCREEN_WIDTH, SCREEN_HEIGHT, MAP_VIEW_HEIGHT, RIBBON_HEIGHT, MAP_VIEW_RECT, RIBBON_RECT
+
+    SCREEN_WIDTH = width
+    SCREEN_HEIGHT = height
+    MAP_VIEW_HEIGHT = int(SCREEN_HEIGHT * 0.80)
+    RIBBON_HEIGHT = SCREEN_HEIGHT - MAP_VIEW_HEIGHT
+    MAP_VIEW_RECT = pygame.Rect(0, 0, SCREEN_WIDTH, MAP_VIEW_HEIGHT)
+    RIBBON_RECT = pygame.Rect(0, MAP_VIEW_HEIGHT, SCREEN_WIDTH, RIBBON_HEIGHT)
