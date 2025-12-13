@@ -1,0 +1,511 @@
+# UI_GUIDANCE — *Valley of Ashes* (Pygame UI Spec)
+
+## 0) Purpose of This Document
+
+This document defines the **entire UI** for *Valley of Ashes*: screen layout, panels, controls, input handling, selection/hover behavior, and required HUD elements for towers/captain/boss scaling. The LLM coder must implement the UI exactly as specified here unless explicitly instructed otherwise.
+
+The UI is designed for:
+
+* **Fast readability at zoomed-out scale**
+* **Quick purchasing/upgrading**
+* **Clear objective state tracking** (towers, capture timers, captain status, boss scaling)
+
+---
+
+## 1) Global Screen Layout (Non-Negotiable)
+
+### 1.1 Window Resolution (MVP Default)
+
+* Default window: `1600 x 900`
+* Must support resizing later, but MVP can assume fixed size.
+
+### 1.2 Main Partition (80/20 Split)
+
+The screen is divided into two non-overlapping rectangles:
+
+1. **Map Viewport (Top 80%)**
+
+* `MAP_VIEW_RECT = (x=0, y=0, w=SCREEN_W, h=int(SCREEN_H*0.80))`
+* For 900px tall: map view height = `720`
+
+2. **Control Ribbon (Bottom 20%)**
+
+* `RIBBON_RECT = (x=0, y=MAP_VIEW_RECT.h, w=SCREEN_W, h=SCREEN_H - MAP_VIEW_RECT.h)`
+* For 900px tall: ribbon height = `180`
+
+**Rule:** The map is never drawn under the ribbon. The ribbon is opaque.
+
+---
+
+## 2) Visual Style Guide (Pixel + Clarity)
+
+* Background UI panels: dark gray/black with subtle borders.
+* Text: light gray/white.
+* Highlight colors:
+
+  * Player faction: **teal/cyan**
+  * Enemy faction: **red**
+  * Neutral: **yellow**
+  * Disabled buttons: muted gray
+* Fonts:
+
+  * Use a single pixel-style font if available; otherwise default pygame font.
+* Buttons should have:
+
+  * normal, hover, pressed, disabled states
+  * clear text + cost numbers
+
+---
+
+## 3) Map View UI Elements (Inside MAP_VIEW_RECT)
+
+### 3.1 Camera Controls (Map Only)
+
+Controls only apply when mouse is inside `MAP_VIEW_RECT`.
+
+* **Zoom**: mouse wheel
+
+  * wheel up: zoom in
+  * wheel down: zoom out
+* **Pan**:
+
+  * Hold **middle mouse** and drag, OR
+  * Hold **right mouse** and drag (if right click is not used elsewhere)
+  * Optional: WASD panning (nice-to-have)
+* Zoom bounds:
+
+  * `ZOOM_MIN = 0.35`
+  * `ZOOM_MAX = 2.50`
+* Zoom behavior:
+
+  * Zoom relative to mouse cursor (preferred)
+  * If too hard, zoom around camera center
+
+### 3.2 Map Rendering Layers (Draw Order)
+
+1. Terrain background (ash plains)
+2. Impassables (cliffs + ash rift)
+3. Crossings (bridges)
+4. Lane hints (faint lines) *optional but recommended*
+5. Structures (towers, bunker outlines, bases, boss keeps)
+6. Graveyard markers + owner flags
+7. Units (dots/sprites)
+8. Health bars (only when zoomed in past threshold)
+9. Hover/selection overlays (rings, outlines)
+10. Debug overlays (optional; behind toggle key)
+
+### 3.3 Zoom-Based Level of Detail
+
+* If `zoom < 0.75`:
+
+  * Units drawn as **dots only**
+  * No health bars
+  * No individual unit text
+* If `0.75 <= zoom < 1.30`:
+
+  * Units drawn as dots + small directional tick (optional)
+  * Health bars for **boss/captain only**
+* If `zoom >= 1.30`:
+
+  * Health bars for all units
+  * Tower capture ring shown when tower hovered/selected
+
+### 3.4 Hover and Selection
+
+Hover behavior (mouse in map rect):
+
+* If cursor is near a unit/structure marker, it becomes “hovered”.
+* Hover priority (highest to lowest):
+
+  1. Boss
+  2. Captain
+  3. Tower
+  4. Graveyard
+  5. Units (largest to smallest)
+* Hover radius depends on zoom:
+
+  * base: 10px in screen space
+  * scale slightly up when zoomed out
+
+Selection behavior:
+
+* Left click selects the hovered entity (unit/structure/graveyard).
+* Only **one selection** at a time.
+* Selection shows:
+
+  * A ring around selected entity in the map view
+  * Details in the **Info Panel** in the ribbon (see Section 6)
+
+### 3.5 Objective Markers (Always Visible)
+
+Even when zoomed far out, always draw:
+
+* Towers: small square icon + faction tint; destroyed towers show a “crater” icon
+* Captain bunkers: small bunker icon; destroyed shows rubble icon
+* Boss base/keep: big icon (castle/keep)
+
+---
+
+## 4) Control Ribbon Layout (Inside RIBBON_RECT)
+
+The ribbon is divided into 3 columns:
+
+### 4.1 Column Widths
+
+* Left: **35%** (Info Panel)
+* Middle: **45%** (Purchases & Upgrades)
+* Right: **20%** (Objectives HUD + Minimap optional)
+
+For 1600px width:
+
+* Left = 560px
+* Middle = 720px
+* Right = 320px
+
+All ribbon sub-panels are full height (`RIBBON_RECT.h`).
+
+---
+
+## 5) Ribbon Left Panel — Info Panel (Selection Details)
+
+### 5.1 Purpose
+
+Shows details about the currently selected entity (unit, tower, bunker, boss, graveyard). If nothing selected, shows “Battle Overview.”
+
+### 5.2 Content Rules
+
+Always show a header row:
+
+* `SELECTED: <Name>` or `SELECTED: None`
+
+If a **unit** is selected:
+
+* Faction (Player/Enemy)
+* Type (Grunt/Lieutenant/Cavalry/Tower Archer/Captain/Boss)
+* HP bar + numeric: `HP: current / max`
+* Damage
+* Attack speed: `Cooldown: X.XXs`
+* Move speed (if > 0)
+* State (marching/fighting/defending/capturing)
+
+If a **tower** is selected:
+
+* Tower name/id (e.g., “North East Forward Tower”)
+* Owner faction (original owner)
+* State: STANDING / VULNERABLE / DESTROYED
+* Archers alive: `A: 0/6` (or 6/6)
+* Capture progress display (if vulnerable):
+
+  * `OCCUPY TIMER: 01:35 / 03:00`
+  * Also show contested state if both factions present
+* Reminder text:
+
+  * “To destroy: defeat archers, then occupy uncontested for 3:00.”
+
+If a **captain bunker** is selected:
+
+* State: STANDING / DESTROYED
+* Captain alive: YES/NO
+* If standing: show captain HP in a compact bar
+
+If a **boss** is selected:
+
+* Boss HP bar + numeric
+* Boss Damage
+* Boss Power Multiplier:
+
+  * `BOSS POWER: 1.0 + 0.8*n = X.Xx`
+  * `TOWERS STANDING: n/4`
+
+If a **graveyard** is selected:
+
+* Owner faction
+* Capture status:
+
+  * Owned / Neutral / Contested
+  * Capture progress meter (if you implemented it)
+
+### 5.3 Tooltip Behavior
+
+* Hovering a UI element (button, objective entry) shows a tooltip near cursor with:
+
+  * name
+  * cost (if applicable)
+  * short effect summary
+
+---
+
+## 6) Ribbon Middle Panel — Purchases & Upgrades
+
+This panel contains:
+
+1. **Gold display**
+2. **Unit purchase buttons**
+3. **Upgrade buttons**
+4. **Queue/readout area** (even if purchases are instant, show “Last purchase” log)
+
+### 6.1 Gold Display (Top Row)
+
+* Large text: `GOLD: ####`
+* Also show income pace:
+
+  * `KILLS (60s): X` and `GOLD (60s): Y` (rolling window; optional but recommended)
+
+### 6.2 Unit Purchase Buttons (Left Half of Middle Panel)
+
+Buttons (Player only):
+
+* Buy Grunt — Cost 10
+* Buy Lieutenant — Cost 45
+* Buy Cavalry — Cost 70
+
+Each button shows:
+
+* Unit name + role tag (“Frontline”, “Elite”, “Fast Raider”)
+* Cost
+* Optional: tiny stats line: `HP/Dmg/Spd`
+
+Button states:
+
+* Disabled if `gold < cost`
+* Hover highlight on mouseover
+* On click:
+
+  * deduct gold
+  * spawn unit at home graveyard (MVP rule)
+  * add a log entry “Purchased: X”
+
+### 6.3 Upgrades (Right Half of Middle Panel)
+
+Upgrades are global and apply to **Player units only**.
+
+MVP must include at least **6 upgrades**:
+
+**UPG-1: Infantry Training**
+
+* Cost: 120
+* Effect: Grunt/Lieutenant/Cavalry damage +10%
+
+**UPG-2: Hardened Armor**
+
+* Cost: 140
+* Effect: Grunt/Lieutenant/Cavalry max HP +12%
+
+**UPG-3: Rapid Reinforcements**
+
+* Cost: 160
+* Effect: respawn delay -15% (applies to Grunt/Lieutenant/Cavalry)
+
+**UPG-4: War Drums**
+
+* Cost: 140
+* Effect: move speed +8% (Grunt/Lieutenant/Cavalry)
+
+**UPG-5: Veteran Discipline**
+
+* Cost: 220
+* Effect: Lieutenants +15% damage (stacks with UPG-1 additively by percent)
+
+**UPG-6: Cavalry Spurs**
+
+* Cost: 220
+* Effect: Cavalry +15% move speed (stacks with UPG-4 additively by percent)
+
+Upgrade rule:
+
+* Each upgrade can be purchased **once**.
+* Purchased upgrades show as “OWNED” and become disabled/locked.
+
+### 6.4 Upgrade Display Requirements
+
+Each upgrade button must show:
+
+* Name
+* Cost
+* 1-line effect
+* Owned indicator (checkbox icon or “OWNED” tag)
+
+---
+
+## 7) Ribbon Right Panel — Objectives HUD (Critical)
+
+### 7.1 Purpose
+
+This panel is the “command center” for objective progress:
+
+* Tower states (standing/vulnerable/destroyed)
+* Tower occupation timers (3:00) when active
+* Captain alive/dead
+* Boss power multiplier (from towers remaining)
+* Optional minimap
+
+### 7.2 Required Elements (Top to Bottom)
+
+#### A) Boss Power Readout (always visible)
+
+Show for both bosses:
+
+* `YOUR BOSS POWER: X.Xx` and `ENEMY BOSS POWER: X.Xx`
+* Each line includes towers standing:
+
+  * `Towers: n/4`
+* Color coding:
+
+  * Player line teal
+  * Enemy line red
+
+#### B) Towers List (Player + Enemy)
+
+Two subtables:
+
+* “YOUR TOWERS” and “ENEMY TOWERS”
+  Each shows 4 entries:
+* `Rear West`
+* `Rear East`
+* `Forward West`
+* `Forward East`
+
+Each entry shows a compact state:
+
+* STANDING: solid icon
+* VULNERABLE: blinking/outlined icon + “VULN”
+* DESTROYED: crater icon + “X”
+
+If a tower is currently being occupied (timer running or contested), show:
+
+* `01:35 / 03:00`
+* If contested: append `CONTESTED`
+
+Clicking a tower entry:
+
+* Centers camera on that tower (map pan jump)
+* Selects that tower (updates Info Panel)
+
+#### C) Captain Status
+
+Two lines:
+
+* `YOUR CAPTAIN: ALIVE/DEAD`
+* `ENEMY CAPTAIN: ALIVE/DEAD`
+
+Clicking a captain status line:
+
+* Centers camera on captain bunker
+* Selects captain (if alive) or bunker (if dead)
+
+#### D) Optional Minimap (if implemented)
+
+* Small minimap showing:
+
+  * camera rectangle
+  * tower icons
+  * graveyards
+  * base icons
+* Clicking minimap moves camera center.
+
+Minimap is optional for MVP, but recommended.
+
+---
+
+## 8) Input Handling Rules (No Ambiguity)
+
+### 8.1 Mouse Click Priority
+
+When mouse is clicked:
+
+1. If click is inside `RIBBON_RECT`:
+
+   * UI buttons consume click (no map interaction).
+2. Else if click is inside `MAP_VIEW_RECT`:
+
+   * left click selects hovered entity
+   * middle/right drag pans (depending on chosen scheme)
+
+### 8.2 Keyboard Shortcuts (MVP)
+
+* `ESC`: pause menu overlay (or return to main menu after confirmation)
+* `SPACE`: center camera on your home graveyard
+* `TAB`: toggle Objective HUD expanded/compact (optional)
+* `F1`: toggle debug overlays (optional)
+* `1,2,3`: quick-buy Grunt/Lieutenant/Cavalry if affordable
+
+---
+
+## 9) Game State Screens
+
+### 9.1 Main Menu
+
+Centered buttons:
+
+* “Start Game”
+* “Quit”
+
+Optional: “Settings” later.
+
+### 9.2 In-Game Pause Overlay
+
+When paused:
+
+* Darken screen
+* Buttons:
+
+  * Resume
+  * Restart
+  * Quit to Menu
+
+### 9.3 Game Over Screen
+
+Large winner text:
+
+* “VICTORY” (teal) or “DEFEAT” (red)
+  Also show:
+* match duration
+* total kills (player/enemy)
+  Buttons:
+* Restart
+* Quit to Menu
+
+---
+
+## 10) UI Update Frequency and Performance
+
+* UI should update every frame, but expensive computations (like rolling 60s kill stats) should be updated at a lower frequency:
+
+  * e.g., once per second.
+
+---
+
+## 11) Data Contracts Between UI and Game Systems
+
+The UI must be able to query:
+
+* Player gold
+* Upgrade ownership states
+* Tower state per tower:
+
+  * `state`, `archers_alive`, `occupy_timer`, `is_contested`
+* Captain alive status
+* Boss stats:
+
+  * `hp`, `max_hp`, `damage`, `power_multiplier`, `towers_standing`
+* Selected entity details (generic interface)
+* Camera state: position + zoom
+
+---
+
+## 12) Sacred Document Rules (Non-Negotiable)
+
+**This `ui_guidance` document is sacred.**
+The LLM coder must follow these rules:
+
+1. **The LLM coder is not allowed to modify this document** in any way (no edits, rewrites, “improvements,” or refactors).
+2. **The LLM coder is not allowed to create copies, alternate versions, summaries, or derivative “new guidance” documents** intended to replace or supersede this one.
+3. If the LLM coder believes a change is necessary, it must:
+
+   * stop implementation
+   * request explicit instructions from the human author
+   * wait for updated guidance provided by the human author
+
+Failure to follow these rules is considered a critical implementation failure.
+
+---
