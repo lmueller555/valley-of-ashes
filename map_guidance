@@ -1,0 +1,556 @@
+MAP_GUIDANCE — Valley of Ashes (Updated: Towers + Captain Bunkers)
+0) Purpose of This Document
+
+This document defines the exact battlefield layout for Valley of Ashes, including:
+
+World size + coordinate system
+
+Passable/impassable terrain geometry
+
+3 wide lanes (waypoints)
+
+Ash Rift + crossings
+
+Bases (boss keeps)
+
+Graveyards (respawn points)
+
+NEW: 4 towers per side (with archer garrisons; destructible objectives)
+
+NEW: 1 captain bunker per side (with captain defender; destructible objective)
+
+The map is vertically symmetrical (north/south mirror) so both factions have identical terrain and objective placements.
+
+1) Core Map Requirements
+
+Top-down strategic battlefield with zoom + pan.
+
+Enemy base in the north, Player base in the south.
+
+North–South symmetry: any feature at (x, y) in the south has a counterpart at (x, MAP_H - y) in the north.
+
+Three wide, open lanes: West / Center / East.
+
+Central impassable hazard band (“Ash Rift”) with three wide crossings.
+
+Structures per faction:
+
+4 Towers (each with archers; destructible)
+
+1 Captain Bunker (captain defender; destructible)
+
+1 Boss Base (boss defender; win condition)
+
+2) Coordinate System and World Size
+2.1 World Coordinates
+
+Origin (0, 0) is the top-left corner of the battlefield.
+
+x increases right, y increases down.
+
+2.2 Dimensions (Canonical)
+
+MAP_W = 3000
+
+MAP_H = 4200
+
+Mirror axis: MID_Y = 2100
+
+2.3 Symmetry Rule (Mandatory)
+
+Define helper:
+
+mirror_y(y) = MAP_H - y
+
+All south-side placements listed in this doc must be mirrored to create their north equivalents.
+
+3) Terrain Types and Collision Semantics
+3.1 Terrain Gameplay Meaning (MVP)
+
+Passable: units may travel and fight.
+
+Impassable: units cannot enter.
+
+No slow zones in MVP (optional later).
+
+3.2 Visual Themes (Rendering Only)
+
+Ash Plains (default)
+
+Crater fields / scorched patches
+
+Ruins decals near destroyed objectives
+
+4) Impassable Geometry
+4.1 Outer Boundary Cliffs (Impassable)
+
+Keeps units inside play space.
+
+Left cliff belt: x: 0 → 120, y: 0 → MAP_H
+
+Right cliff belt: x: MAP_W-120 → MAP_W, y: 0 → MAP_H
+
+Optional thin top/bottom belts are allowed but not required.
+
+5) Central Hazard: Ash Rift + 3 Wide Crossings
+5.1 Ash Rift Band (Impassable)
+
+RIFT_TOP = 1980
+
+RIFT_BOTTOM = 2220
+
+Rift spans: x: 120 → MAP_W-120
+
+Everything in this band is impassable except crossing rectangles below.
+
+5.2 Crossing Rectangles (Passable Gaps)
+
+Lane centers:
+
+X_W = 750, X_C = 1500, X_E = 2250
+Crossing size:
+
+CROSSING_W = 420
+
+CROSSING_H = 240 (entire band)
+
+Rectangles:
+
+West Crossing: x 540→960, y 1980→2220
+
+Center Crossing: x 1290→1710, y 1980→2220
+
+East Crossing: x 2040→2460, y 1980→2220
+
+6) Lanes (Primary March Corridors)
+6.1 Lane Width
+
+LANE_WIDTH = 320 (very open)
+Units may drift; no hard walls.
+
+6.2 Waypoints (Canonical South→North; Enemy uses mirrored+reversed)
+
+All waypoint lists below are for a south-faction unit marching north.
+
+West Lane Waypoints (South→North)
+
+(750, 3600)
+
+(720, 3100)
+
+(700, 2650)
+
+(750, 2300)
+
+(750, 2100) (crossing center)
+
+(750, 1900)
+
+(800, 1550)
+
+(820, 1100)
+
+(750, 600)
+
+(750, 420)
+
+Center Lane Waypoints (South→North)
+
+(1500, 3600)
+
+(1500, 3150)
+
+(1500, 2700)
+
+(1500, 2350)
+
+(1500, 2100) (crossing center)
+
+(1500, 1850)
+
+(1500, 1500)
+
+(1500, 1050)
+
+(1500, 600)
+
+(1500, 420)
+
+East Lane Waypoints (South→North)
+
+(2250, 3600)
+
+(2280, 3100)
+
+(2300, 2650)
+
+(2250, 2300)
+
+(2250, 2100) (crossing center)
+
+(2250, 1900)
+
+(2200, 1550)
+
+(2180, 1100)
+
+(2250, 600)
+
+(2250, 420)
+
+6.3 Base Gate Lines (Wide Entry)
+
+North gate line: y = 520, gate width x: 450 → 2550
+
+South gate line: y = 3680, same width
+
+7) Bases (North + South Boss Compounds)
+7.1 Base Footprints (Passable Courtyard)
+
+South Base (Player)
+
+S_BASE_RECT: x 900→2100, y 3650→4180
+
+North Base (Enemy) (mirror)
+
+N_BASE_RECT: x 900→2100, y 20→550
+
+7.2 Boss Keep (Interior Zone)
+
+South Keep
+
+S_KEEP_RECT: x 1200→1800, y 3850→4120
+
+Boss spawn: (1500, 3990)
+
+North Keep (mirror)
+
+N_KEEP_RECT: x 1200→1800, y 80→350
+
+Boss spawn: (1500, 210)
+
+Boss never leaves keep (enforced by unit leash in unit_guidance).
+
+8) Graveyards (Respawn Points)
+8.1 Graveyard Data Model
+
+Each graveyard has:
+
+id
+
+pos
+
+spawn_radius
+
+capture_radius
+
+starting_owner
+
+capture_time_seconds
+
+8.2 Canonical South Graveyards
+
+GY_S_HOME: (1500, 3400)
+
+GY_S_WEST_FORWARD: (750, 2720)
+
+GY_S_EAST_FORWARD: (2250, 2720)
+
+GY_CENTER (neutral): (1500, 2100)
+
+Constants:
+
+GY_SPAWN_RADIUS = 80 (center uses 90)
+
+GY_CAPTURE_RADIUS = 220 (center uses 260)
+
+Capture times:
+
+home/forward: 12s
+
+center: 16s
+
+8.3 North Graveyards (Auto-Mirror)
+
+Create:
+
+GY_N_HOME = (1500, mirror_y(3400)) = (1500, 800)
+
+GY_N_WEST_FORWARD = (750, mirror_y(2720)) = (750, 1480)
+
+GY_N_EAST_FORWARD = (2250, 1480)
+
+GY_CENTER already at midline (unchanged)
+
+Capture rules are unchanged from the previous version.
+
+NEW OBJECTIVES AND STRUCTURES
+9) Towers (4 per Faction, Destructible)
+9.1 Tower Gameplay Summary (MVP)
+
+Each faction has 4 towers. Each tower:
+
+Begins STANDING
+
+Spawns a garrison of tower archers (see unit_guidance)
+
+Becomes VULNERABLE only when all its archers are dead
+
+Is permanently DESTROYED when an enemy occupies it uncontested for 180 seconds (3 minutes)
+
+Important: Towers do not flip ownership; they are destroyed.
+
+9.2 Tower Collision Geometry (Simple + Deterministic)
+
+Towers should not block large unit blobs, but must visually exist.
+
+Define two radii:
+
+TOWER_CORE_IMPASSABLE_RADIUS_PX = 22 (small solid tower body)
+
+TOWER_CAPTURE_RADIUS_PX = 120 (from unit_guidance; used for occupancy)
+
+Optional: TOWER_CONTEST_RADIUS_PX = 140
+
+Units cannot enter the core radius, but can stand around it to fight/capture.
+
+9.3 Tower Placement (Define South, Mirror to North)
+
+All tower centers are in open fields near lanes so fights naturally happen as pushes advance.
+
+SOUTH Towers (Player-side structures)
+
+T_S_W_REAR (rear-west tower)
+
+pos = (950, 3300)
+
+Supports west/center approach
+
+T_S_E_REAR (rear-east tower)
+
+pos = (2050, 3300)
+
+Supports east/center approach
+
+T_S_W_FORWARD (forward-west tower)
+
+pos = (520, 2500)
+
+A flank objective near west crossing approaches
+
+T_S_E_FORWARD (forward-east tower)
+
+pos = (2480, 2500)
+
+A flank objective near east crossing approaches
+
+NORTH Towers (Enemy-side structures; auto-mirror y)
+
+T_N_W_REAR = (950, mirror_y(3300)) = (950, 900)
+
+T_N_E_REAR = (2050, 900)
+
+T_N_W_FORWARD = (520, mirror_y(2500)) = (520, 1700)
+
+T_N_E_FORWARD = (2480, 1700)
+
+9.4 Tower “Approach Points” (For AI Routing)
+
+Each tower defines two points:
+
+approach_point: where attackers should move first (reduces weird corner cutting)
+
+assault_point: the actual tower center (capture checks use radius around center)
+
+South approach points:
+
+T_S_W_REAR: approach (950, 3150)
+
+T_S_E_REAR: approach (2050, 3150)
+
+T_S_W_FORWARD: approach (650, 2600)
+
+T_S_E_FORWARD: approach (2350, 2600)
+
+North approach points (mirror y):
+
+same x, mirrored y
+
+9.5 Tower Visual Footprint (Rendering)
+
+Draw:
+
+A small square “tower” at center (core radius)
+
+A larger faint ring for capture radius when zoomed in
+Destroyed state:
+
+Replace tower with crater/ruin decal (passable)
+
+Remove/gray its icon on minimap/ribbon UI
+
+10) Captain Bunkers (1 per Faction, Destructible)
+10.1 Captain Bunker Gameplay Summary
+
+Each faction has one captain bunker (a mid-late objective).
+
+Contains 1 Captain (see unit_guidance)
+
+Captain does not respawn
+
+On captain death: bunker becomes permanently DESTROYED
+
+10.2 Bunker Geometry
+
+The bunker is a compound with:
+
+Passable courtyard
+
+Low impassable wall segments outlining the compound (with wide gates so it’s not a choke)
+
+Constants:
+
+BUNKER_WALL_THICKNESS = 18
+
+BUNKER_GATE_WIDTH = 260
+
+10.3 Placement (South Definition, North Mirror)
+SOUTH Captain Bunker (Player-side)
+
+Overall footprint (courtyard zone; passable):
+
+S_BUNKER_RECT: x 1100→1900, y 2860→3180
+
+Center: S_BUNKER_CENTER = (1500, 3020)
+
+Captain spawn: (1500, 3020)
+
+Wall segments (impassable): (implemented as rectangles)
+
+West wall: x 1100→1118, y 2860→3180
+
+East wall: x 1882→1900, y 2860→3180
+
+North wall: split into two segments with a gate opening:
+
+Left segment: x 1100→1370, y 2860→2878
+
+Right segment: x 1630→1900, y 2860→2878
+
+Gate opening between x 1370→1630 (width 260)
+
+South wall: split into two segments with a gate opening:
+
+Left segment: x 1100→1370, y 3162→3180
+
+Right segment: x 1630→1900, y 3162→3180
+
+Gate opening between x 1370→1630
+
+This creates a wide-through compound that still reads visually as a base.
+
+NORTH Captain Bunker (Enemy-side; mirror y)
+
+N_BUNKER_RECT: x unchanged, y mirrored:
+
+South rect y range 2860→3180
+
+Mirrored range becomes MAP_H-3180 → MAP_H-2860 = 1020→1340
+
+N_BUNKER_CENTER = (1500, mirror_y(3020)) = (1500, 1180)
+
+Captain spawn: (1500, 1180)
+Wall segments: same x ranges; y ranges mirrored accordingly.
+
+10.4 Bunker Approach Points (AI Routing)
+
+S_BUNKER_APPROACH_SOUTH = (1500, 3250) (attackers coming from south lanes)
+
+S_BUNKER_APPROACH_NORTH = (1500, 2790) (attackers coming from rift side)
+
+North bunker approach points are mirrored.
+
+10.5 Bunker Destroyed State
+
+When captain dies:
+
+Bunker becomes DESTROYED
+
+Walls are removed from collision (becomes open ruins; passable)
+
+Render as rubble rectangle decal
+
+11) Objective Routing and “Natural Flow”
+
+The three primary lanes remain the default march paths. Objectives sit close enough to lane corridors that fights spill into them.
+
+Recommended objective selection hooks (AI logic lives elsewhere, but map must support it):
+
+Towers have approach points so units don’t path awkwardly into walls/cliffs.
+
+Bunker has two approach points depending on attacker direction.
+
+12) Data Structures the LLM Coder Must Implement
+12.1 Structure Records
+
+Towers and bunkers should be represented as structures with:
+
+id
+
+type: TOWER or BUNKER
+
+faction_owner (who it belongs to initially; for towers this matters for boss scaling)
+
+state: STANDING | VULNERABLE | DESTROYED (tower) or STANDING | DESTROYED (bunker)
+
+center
+
+core_impassable_radius (tower)
+
+capture_radius (tower)
+
+approach_point
+
+colliders: list of rectangles/circles for impassable geometry (walls/core)
+
+12.2 Initialization Order (Recommended)
+
+Build base terrain colliders (cliffs, rift, crossings)
+
+Build structure colliders (tower cores, bunker walls)
+
+Spawn graveyards
+
+Spawn structure defenders:
+
+tower archers per tower
+
+captain per bunker
+
+boss per base
+
+Spawn starting field armies at home graveyard
+
+13) Non-Negotiable Implementation Checklist
+
+Map is correct only if:
+
+ World is 3000x4200, with perfect north/south mirroring.
+
+ Ash Rift blocks movement except at the three defined crossings.
+
+ 3 lanes exist with the waypoint lists above.
+
+ Graveyards exist at the specified coordinates and function for respawns.
+
+ 4 towers per side exist at the specified coordinates with:
+
+tower core impassable radius
+
+capture radius used for occupancy rules
+
+destroyed state removes tower from play
+
+ 1 captain bunker per side exists at the specified footprint with wall colliders and destroyed state.
+
+ Boss base + keep exist and are reachable through lanes.
