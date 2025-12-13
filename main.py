@@ -130,10 +130,12 @@ def draw_debug(surface, font, camera: Camera, geom, toggle, debug_state):
         return
     mx, my = pygame.mouse.get_pos()
     cursor_world = camera.screen_to_world((mx, my))
+    passable = map_data.is_point_passable(cursor_world, geom)
     lines = [
         f"Camera: ({camera.x:.1f}, {camera.y:.1f})",
         f"Zoom: {camera.zoom:.2f}",
         f"Mouse: ({mx:.0f}, {my:.0f}) -> World ({cursor_world[0]:.1f}, {cursor_world[1]:.1f})",
+        f"Passable: {'YES' if passable else 'NO'}",
         "F1: toggle debug overlay",
         "F2: toggle impassable overlay",
         "SPACE: center on home graveyard",
