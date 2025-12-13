@@ -1,0 +1,515 @@
+AI_GUIDANCE — Valley of Ashes (Enemy Macro AI)
+0) Purpose of This Document
+
+This document defines how the AI opponent (enemy faction) makes decisions in real time:
+
+how it earns and spends gold
+
+how it chooses what units to buy (Grunt / Lieutenant / Cavalry)
+
+when it prioritizes towers vs. captain bunker vs. boss defense
+
+multiple heuristic “models” the AI can switch between based on game state
+
+exact evaluation windows, thresholds, and decision chains
+
+implementation requirements (timers, randomness constraints, debouncing, fairness)
+
+This AI is macro only: it does not micromanage individual unit movement or targeting (units follow the shared simulation rules in unit_guidance). The AI’s role is to spend gold, choose upgrades (optional later), and influence lane pressure by deciding what to buy and (optionally) what lane to bias spawns toward.
+
+1) Non-Negotiable AI Principles
+
+Fair economy: AI uses the same gold rules as the player (gold from kills, same unit costs).
+
+No cheating spawns: AI purchases units exactly like the player (same costs, same spawn rules).
+
+Deterministic enough to debug:
+
+Use a predictable decision interval
+
+If any randomness is used, it must be seeded and minimal.
+
+Performance safe: AI evaluation must be lightweight and run at a coarse cadence (not every frame).
+
+2) AI Inputs (What the AI Can “See”)
+
+The AI may query the following game state (must be exposed by the engine):
+
+2.1 Economy
+
+ai_gold (current)
+
+unit_costs (Grunt 10, Lieutenant 45, Cavalry 70)
+
+Optional later: upgrade_costs + owned upgrades
+
+2.2 Objective States
+
+For each AI-owned tower and enemy-owned tower:
+
+tower_state: STANDING / VULNERABLE / DESTROYED
+
+archers_alive (0..6)
+
+occupy_timer_s (0..180) if VULNERABLE
+
+is_contested (bool)
+
+units_in_capture_radius_by_faction (counts for both factions)
+
+Captain bunker:
+
+ai_captain_alive (bool)
+
+enemy_captain_alive (bool)
+
+Boss:
+
+ai_boss_hp, ai_boss_max_hp
+
+enemy_boss_hp, enemy_boss_max_hp
+
+ai_towers_standing (0..4)
+
+enemy_towers_standing (0..4)
+
+2.3 Battlefield Pressure Metrics (Must Be Computable)
+
+To drive decisions, compute these metrics once per AI tick:
+
+Lane presence (for each lane WEST/CENTER/EAST):
+
+ai_units_lane[lane] = count of AI mobile units within lane corridor
+
+enemy_units_lane[lane] = same for player
+
+net_lane_pressure[lane] = ai_units_lane - enemy_units_lane
+
+Frontline position (for each lane):
+
+Define lane axis by y direction (AI is north, moving south).
+
+frontline_y[lane]: median y of the nearest 15 engaged units or nearest 20 AI units to enemy side (implementation detail OK as long as stable).
+
+Normalize to 0..1:
+
+0.0 = at AI base gate
+
+1.0 = at enemy base gate
+
+Since AI is in the north, “progress” is measured downward.
+
+lane_progress[lane] = normalized frontline progress
+
+Threat indices
+
+ai_boss_threat = 1.0 - (ai_boss_hp / ai_boss_max_hp) (0..1)
+
+ai_tower_threat = max over ai towers of (enemy presence in capture radius normalized) (0..1)
+
+ai_captain_threat = enemy unit count within captain bunker defense radius normalized (0..1)
+
+Kill pace (rolling window)
+
+ai_kills_60s, enemy_kills_60s (counts)
+
+kill_diff_60s = ai_kills_60s - enemy_kills_60s
+
+Implementation note: all of these can be approximations. What matters is consistency and that they respond to the battle.
+
+3) AI Outputs (What the AI Can Do)
+
+The AI has these actions:
+
+3.1 Purchases (Primary)
+
+Buy Grunt (10)
+
+Buy Lieutenant (45)
+
+Buy Cavalry (70)
+
+Purchases create new units at AI spawn point (AI home graveyard) per existing rules.
+
+3.2 Optional: Lane Bias Tags (If Implemented)
+
+When buying units, AI can tag them with a preferred lane:
+
+lane_preference = WEST/CENTER/EAST
+Units still follow unit marching behavior; this only selects which lane they are assigned at spawn.
+
+This is recommended because it lets the AI “shift pressure” without micromanagement.
+
+3.3 Optional Later: Upgrades
+
+Not required in MVP unless you explicitly decide so; AI can be expanded to buy the same upgrades as player.
+
+4) AI Timing and Execution Model
+4.1 Two-Tier Tick System (Mandatory)
+
+Sense Tick (frequent)
+
+runs every AI_SENSE_INTERVAL = 1.0s
+
+updates the metrics in Section 2 and caches them
+
+Decision Tick (coarse)
+
+runs every AI_DECISION_INTERVAL = 5.0s
+
+selects a heuristic model (Section 6)
+
+runs a decision chain (Section 7)
+
+attempts purchases using available gold
+
+4.2 Purchase Burst Limits (Anti-Spam)
+
+On each decision tick:
+
+AI may spend at most:
+
+MAX_PURCHASES_PER_TICK = 8 (cheap units)
+
+OR a maximum of SPEND_FRACTION_PER_TICK = 0.65 of current gold
+Whichever stops first.
+
+This prevents “instant army floods” after a big fight.
+
+4.3 Cooldowns Per Unit Type
+
+Grunt buy cooldown: 0.0s (no restriction)
+
+Lieutenant buy cooldown: 2.0s
+
+Cavalry buy cooldown: 3.0s
+
+Cooldowns are tracked independently and prevent repetitive single-type spam.
+
+5) AI “Situational Modes” (How AI Chooses a Heuristic Model)
+
+Every decision tick, AI selects a mode based on priority rules below.
+
+5.1 Mode Priority (Top Wins)
+
+BASE DEFENSE MODE if ai_boss_threat >= 0.20
+(boss down 20%+ HP)
+
+TOWER DEFENSE MODE if any AI tower is:
+
+VULNERABLE and enemy occupying timer > 0
+OR
+
+VULNERABLE and enemy units inside capture radius >= 2
+
+CAPTAIN DEFENSE MODE if ai_captain_alive and enemy units within bunker radius >= 8
+
+OFFENSE MODE if any enemy tower is:
+
+VULNERABLE with archers_alive == 0 and occupy is possible
+OR
+
+enemy has fewer towers standing than AI by 2+ (press advantage)
+
+RECOVERY MODE if kill_diff_60s <= -10 or total AI mobile unit count < 70% of enemy
+
+BALANCED MODE otherwise
+
+These modes map to different decision chains and unit mixes.
+
+6) Heuristic Models (Several Options, Switchable)
+
+Implement all of these models. The AI chooses one by mode rules (Section 5). Each model produces a “shopping plan” (what to buy + lane bias).
+
+6.1 Model A — Balanced Pressure (Default)
+
+Goal: maintain stable lane presence and gradually advance.
+
+Behavior:
+
+Ensure all lanes have minimum unit counts (floor).
+
+Spend surplus on lieutenants and occasional cavalry.
+
+Targets:
+
+Lane floors:
+
+West: 18
+
+Center: 22
+
+East: 18
+
+Desired mix (approx):
+
+70% Grunts
+
+20% Lieutenants
+
+10% Cavalry
+
+6.2 Model B — Tower Defense
+
+Goal: stop tower destruction by contesting capture radius.
+
+Behavior:
+
+Identify threatened tower T*:
+
+highest enemy count inside radius + highest occupy timer
+
+Buy fast units (cavalry) to reach tower quickly, plus grunts to hold.
+
+Targets:
+
+40% Cavalry, 50% Grunts, 10% Lieutenants until threat resolves.
+
+Lane bias: whichever lane most directly reaches T* (based on tower x):
+
+x < 1200 => WEST
+
+1200..1800 => CENTER
+
+x > 1800 => EAST
+
+6.3 Model C — Base Defense
+
+Goal: stop boss from dying, stabilize near base.
+
+Behavior:
+
+Flood center lane and nearest approach lane to base gate.
+
+Prefer lieutenants (high value) + grunts for meatshield.
+
+Cavalry only if enemy tower is vulnerable (counter-raid optional).
+
+Targets:
+
+55% Lieutenants, 45% Grunts, 0–5% Cavalry
+
+Lane bias: CENTER always, unless pressure metrics show one flank collapsing:
+
+if net_lane_pressure[WEST] < -10 then bias WEST as secondary
+
+if net_lane_pressure[EAST] < -10 then bias EAST as secondary
+
+6.4 Model D — Objective Offense (Tower Rush)
+
+Goal: destroy enemy towers ASAP to reduce enemy boss scaling.
+
+Behavior:
+
+If any enemy tower is VULNERABLE and not contested:
+
+prioritize sending bodies to occupy
+
+Buy grunts to occupy + cavalry to arrive quickly + a few lieutenants to clear defenders around.
+
+Targets:
+
+50% Grunts, 30% Cavalry, 20% Lieutenants
+
+Lane bias toward the target tower’s lane by x rule.
+
+6.5 Model E — Recovery / Comeback
+
+Goal: recover after losing a big fight (down in kills / unit count).
+
+Behavior:
+
+Pure efficiency: buy as many grunts as possible until parity returns.
+
+Add lieutenants once ai_gold >= 120 and lane floors restored.
+
+Targets:
+
+Stage 1 (until parity): 90% Grunts, 10% Lieutenants, 0% Cavalry
+
+Stage 2 (stabilized): switch to Balanced Pressure
+
+Lane bias:
+
+Always CENTER for Stage 1 (fastest help), then distribute.
+
+7) Decision Chains (Exact Step-by-Step Logic)
+
+On each decision tick:
+
+7.1 Step 1 — Update Metrics (read cache)
+
+Read cached metrics from last sense tick.
+
+7.2 Step 2 — Determine Mode
+
+Use Section 5 priority rules to pick mode.
+
+7.3 Step 3 — Select Model
+
+Map modes to models:
+
+BALANCED MODE -> Model A
+
+TOWER DEFENSE MODE -> Model B
+
+BASE DEFENSE MODE -> Model C
+
+OFFENSE MODE -> Model D
+
+RECOVERY MODE -> Model E
+
+CAPTAIN DEFENSE MODE -> Model C (but with bunker bias; see 7.6)
+
+7.4 Step 4 — Compute Lane Needs (Lane Floor Enforcement)
+
+Before spending on fancy mixes, enforce lane floors (unless in Base Defense).
+
+If mode is not BASE DEFENSE:
+
+For each lane:
+
+if ai_units_lane[lane] < lane_floor[lane]:
+
+buy Grunts with lane bias = lane until floor met or gold spent limit reached
+
+This prevents weird “all-in” on one flank.
+
+7.5 Step 5 — Generate Shopping Plan (Unit Mix Loop)
+
+With remaining budget for this tick:
+
+Determine desired mix from model
+
+While gold remains and purchases under cap:
+
+select next unit type based on desired ratios and cooldown availability
+
+attempt purchase
+
+assign lane bias per model rules:
+
+Balanced: distribute to lanes with lowest net_lane_pressure
+
+Defense: bias threatened objective lane
+
+Base defense: center
+
+Offense: target tower lane
+
+Recovery: center then spread
+
+7.6 Special Case — Captain Defense Bias
+
+If CAPTAIN DEFENSE MODE triggers:
+
+Treat captain bunker as the “objective”
+
+Lane bias determination:
+
+if bunker x near center (it is), bias CENTER
+
+Purchase emphasis:
+
+65% Lieutenants, 35% Grunts
+
+Cavalry disabled
+Rationale: stabilize brawl at bunker area.
+
+7.7 Step 6 — Post-Spend Dampening
+
+After purchases:
+
+If AI gold is below 10, stop (can’t buy anything).
+
+Record last decision info (for debugging overlay):
+
+mode chosen
+
+purchases made (counts)
+
+lane biases used
+
+8) Lane Bias Implementation (How Units Get Assigned Lanes)
+
+When AI buys a unit:
+
+It spawns at AI home graveyard.
+
+Assign unit.lane:
+
+if the purchase included a lane bias, use it
+
+else use default distribution (West 32.5 / Center 35 / East 32.5)
+
+This is the only “control” AI has over battlefield shape.
+
+9) Anti-Exploit and Fairness Rules
+9.1 No Perfect Knowledge of Future
+
+AI can only react to current states (tower vulnerable, occupy timer, boss hp, lane counts).
+No prediction.
+
+9.2 No Frame-Perfect Reactions
+
+Decision tick is 5 seconds, so the AI is beatable.
+
+9.3 Optional Difficulty Scaling (For Later)
+
+If you want difficulty levels, do it without cheating:
+
+Easy: AI_DECISION_INTERVAL = 7s, spend cap 50%, more grunts
+
+Normal: 5s, 65%, normal mixes
+
+Hard: 4s, 75%, better lane selection logic
+
+Do not increase gold generation.
+
+10) Debug UI Hooks (Strongly Recommended)
+
+Expose a debug overlay toggle (F1) that shows:
+
+AI mode
+
+AI gold
+
+Purchases last tick (G/L/C counts)
+
+Lane pressures (W/C/E)
+
+Threat values (boss/tower/captain)
+
+This makes tuning possible.
+
+11) Minimum Viable AI Acceptance Criteria
+
+The AI is “done” when:
+
+It purchases units automatically every few seconds.
+
+It can respond to:
+
+a tower being vulnerable and occupied (tries to contest)
+
+its boss taking real damage (shifts to base defense)
+
+It doesn’t stall with lots of gold unspent for long periods.
+
+It creates lane pressure that feels like a real opponent (not perfectly optimal, but active).
+
+12) Implementation Notes (For the LLM Coder)
+
+Put AI constants in config.py:
+
+intervals, lane floors, thresholds, mix ratios, caps
+
+Implement AI as a small class:
+
+update_sense(dt)
+
+update_decision(dt)
+
+attempt_purchase(unit_type, lane_bias)
+
+Keep AI state minimal and serializable.
