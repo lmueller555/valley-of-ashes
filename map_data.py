@@ -35,6 +35,8 @@ class Bunker:
     faction_owner: str
     rect: pygame.Rect
     center: Tuple[float, float]
+    approach_from_south: Tuple[float, float]
+    approach_from_north: Tuple[float, float]
     wall_rects: List[pygame.Rect]
     state: str = "STANDING"
     captain_alive: bool = True
@@ -72,14 +74,14 @@ def build_towers() -> List[Tower]:
                 approach_point=config.TOWER_APPROACH_SOUTH[tower_id],
             )
         )
+    north_approaches = config.build_north_tower_approaches()
     for tower_id, center in config.build_north_towers().items():
-        approaches = config.build_north_tower_approaches()
         towers.append(
             Tower(
                 tower_id=tower_id,
                 faction_owner="ENEMY",
                 center=center,
-                approach_point=approaches[tower_id],
+                approach_point=north_approaches[tower_id],
             )
         )
     return towers
@@ -108,17 +110,24 @@ def build_bunkers() -> List[Bunker]:
             "PLAYER",
             config.S_BUNKER_RECT.copy(),
             config.S_BUNKER_CENTER,
+            approach_from_south=config.S_BUNKER_APPROACH_SOUTH,
+            approach_from_north=config.S_BUNKER_APPROACH_NORTH,
             wall_rects=build_wall_segments(config.S_BUNKER_RECT),
         ),
     ]
     north_rect = config.S_BUNKER_RECT.copy()
     north_rect.y = config.mirror_y(config.S_BUNKER_RECT.bottom)
+    north_center = (config.S_BUNKER_CENTER[0], config.mirror_y(config.S_BUNKER_CENTER[1]))
+    north_approach_south = (config.S_BUNKER_APPROACH_SOUTH[0], config.mirror_y(config.S_BUNKER_APPROACH_SOUTH[1]))
+    north_approach_north = (config.S_BUNKER_APPROACH_NORTH[0], config.mirror_y(config.S_BUNKER_APPROACH_NORTH[1]))
     bunkers.append(
         Bunker(
             "N_BUNKER",
             "ENEMY",
             north_rect,
-            (config.S_BUNKER_CENTER[0], config.mirror_y(config.S_BUNKER_CENTER[1])),
+            north_center,
+            approach_from_south=north_approach_south,
+            approach_from_north=north_approach_north,
             wall_rects=build_wall_segments(north_rect),
         ),
     )
@@ -134,10 +143,23 @@ def build_impassables() -> List[pygame.Rect]:
         pygame.Rect(config.MAP_W - config.CLIFF_BELT_WIDTH, 0, config.CLIFF_BELT_WIDTH, config.MAP_H)
     )
 
-    # Rift band minus crossings (handled in passability checks)
-    impassables.append(
-        pygame.Rect(config.CLIFF_BELT_WIDTH, config.RIFT_TOP, config.MAP_W - 2 * config.CLIFF_BELT_WIDTH, config.RIFT_BOTTOM - config.RIFT_TOP)
-    )
+    # Rift band minus crossings. Create segmented rectangles so impassables
+    # mirror the true passable gaps from map_guidance.
+    band_top = config.RIFT_TOP
+    band_height = config.RIFT_BOTTOM - config.RIFT_TOP
+    cursor_x = config.CLIFF_BELT_WIDTH
+    for x0, _, x1, _ in sorted(config.CROSSINGS, key=lambda r: r[0]):
+        if x0 > cursor_x:
+            impassables.append(
+                pygame.Rect(cursor_x, band_top, x0 - cursor_x, band_height)
+            )
+        cursor_x = max(cursor_x, x1)
+
+    # Tail of the rift band after the final crossing.
+    if cursor_x < config.MAP_W - config.CLIFF_BELT_WIDTH:
+        impassables.append(
+            pygame.Rect(cursor_x, band_top, (config.MAP_W - config.CLIFF_BELT_WIDTH) - cursor_x, band_height)
+        )
 
     return impassables
 
