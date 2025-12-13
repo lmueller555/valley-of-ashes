@@ -1,6 +1,7 @@
 import pygame
 
 import config
+import map_data
 from camera import Camera
 from map_data import build_map_geometry
 
@@ -10,42 +11,13 @@ def world_rect_to_screen(camera: Camera, rect: pygame.Rect) -> pygame.Rect:
     return pygame.Rect(sx, sy, rect.width * camera.zoom, rect.height * camera.zoom)
 
 
-def draw_bunker(surface, camera: Camera, bunker_rect: pygame.Rect, is_north: bool):
+def draw_bunker(surface, camera: Camera, bunker: map_data.Bunker, is_north: bool):
     courtyard_color = (70, 70, 80)
     wall_color = (120, 90, 70)
-    rect_screen = world_rect_to_screen(camera, bunker_rect)
+    rect_screen = world_rect_to_screen(camera, bunker.rect)
     pygame.draw.rect(surface, courtyard_color, rect_screen)
-
-    if is_north:
-        base_y_top = config.mirror_y(3180)
-        base_y_bottom = config.mirror_y(2860)
-    else:
-        base_y_top = 2860
-        base_y_bottom = 3180
-
-    def wall_rect(x0, y0, x1, y1):
-        rect = pygame.Rect(x0, y0, x1 - x0, y1 - y0)
-        return world_rect_to_screen(camera, rect)
-
-    walls = []
-    # West and East walls
-    walls.append(wall_rect(1100, base_y_top, 1118, base_y_bottom))
-    walls.append(wall_rect(1882, base_y_top, 1900, base_y_bottom))
-
-    # North wall segments
-    y_north_top = base_y_top
-    y_north_bottom = base_y_top + config.BUNKER_WALL_THICKNESS
-    walls.append(wall_rect(1100, y_north_top, 1370, y_north_bottom))
-    walls.append(wall_rect(1630, y_north_top, 1900, y_north_bottom))
-
-    # South wall segments
-    y_south_bottom = base_y_bottom
-    y_south_top = y_south_bottom - config.BUNKER_WALL_THICKNESS
-    walls.append(wall_rect(1100, y_south_top, 1370, y_south_bottom))
-    walls.append(wall_rect(1630, y_south_top, 1900, y_south_bottom))
-
-    for wall in walls:
-        pygame.draw.rect(surface, wall_color, wall)
+    for wall in bunker.wall_rects:
+        pygame.draw.rect(surface, wall_color, world_rect_to_screen(camera, wall))
 
 
 def draw_tower(surface, camera: Camera, tower_center, color):
@@ -72,6 +44,8 @@ def draw_lane(surface, camera: Camera, points):
 def draw_map(surface, camera: Camera, geom):
     surface.set_clip(config.MAP_VIEW_RECT)
     pygame.draw.rect(surface, config.COLOR_TERRAIN, config.MAP_VIEW_RECT)
+
+    # Optional overlay for impassables is drawn later through draw_debug.
 
     # Cliffs
     left_cliff = pygame.Rect(0, 0, config.CLIFF_BELT_WIDTH, config.MAP_H)
@@ -105,7 +79,7 @@ def draw_map(surface, camera: Camera, geom):
 
     # Bunkers
     for bunker in geom.bunkers:
-        draw_bunker(surface, camera, bunker.rect, bunker.faction_owner == "ENEMY")
+        draw_bunker(surface, camera, bunker, bunker.faction_owner == "ENEMY")
 
     # Graveyards
     for gy in geom.graveyards:
@@ -120,6 +94,29 @@ def draw_map(surface, camera: Camera, geom):
     surface.set_clip(None)
 
 
+def draw_impassable_overlay(surface, camera: Camera, geom):
+    overlay = pygame.Surface(config.MAP_VIEW_RECT.size, pygame.SRCALPHA)
+    shade = (200, 60, 60, 60)
+
+    for rect in geom.impassable_rects:
+        overlay.fill(shade, world_rect_to_screen(camera, rect))
+
+    # Remove crossing gaps from the rift shading for clarity.
+    for x0, y0, x1, y1 in config.CROSSINGS:
+        overlay.fill((0, 0, 0, 0), world_rect_to_screen(camera, pygame.Rect(x0, y0, x1 - x0, y1 - y0)))
+
+    for bunker in geom.bunkers:
+        for wall in bunker.wall_rects:
+            overlay.fill(shade, world_rect_to_screen(camera, wall))
+
+    for tower in geom.towers:
+        sx, sy = camera.world_to_screen(tower.center)
+        radius = max(1, int(tower.core_radius * camera.zoom))
+        pygame.draw.circle(overlay, shade, (int(sx), int(sy)), radius)
+
+    surface.blit(overlay, (0, 0))
+
+
 def draw_ribbon(surface, font):
     pygame.draw.rect(surface, config.COLOR_RIBBON, config.RIBBON_RECT)
     header = font.render("Valley of Ashes — Control Ribbon (placeholder)", True, config.COLOR_WHITE)
@@ -128,7 +125,7 @@ def draw_ribbon(surface, font):
     surface.blit(sub, (20, config.MAP_VIEW_HEIGHT + 50))
 
 
-def draw_debug(surface, font, camera: Camera, geom, toggle):
+def draw_debug(surface, font, camera: Camera, geom, toggle, debug_state):
     if not toggle:
         return
     mx, my = pygame.mouse.get_pos()
@@ -138,10 +135,12 @@ def draw_debug(surface, font, camera: Camera, geom, toggle):
         f"Zoom: {camera.zoom:.2f}",
         f"Mouse: ({mx:.0f}, {my:.0f}) -> World ({cursor_world[0]:.1f}, {cursor_world[1]:.1f})",
         "F1: toggle debug overlay",
+        "F2: toggle impassable overlay",
         "SPACE: center on home graveyard",
         f"Towers: {len(geom.towers)} (capture r={config.TOWER_CAPTURE_RADIUS_PX})",
         f"Bunkers: {len(geom.bunkers)}",
         f"Graveyards: {len(geom.graveyards)}",
+        f"Impassable overlay: {'ON' if debug_state.get('show_impassable') else 'OFF'}",
     ]
     y = 10
     for line in lines:
@@ -187,7 +186,7 @@ def main():
     camera = Camera()
     geom = build_map_geometry()
     debug_overlay = False
-    state_cache = {"last_mouse": None}
+    state_cache = {"last_mouse": None, "show_impassable": False}
 
     running = True
     while running:
@@ -200,6 +199,8 @@ def main():
                     running = False
                 elif event.key == pygame.K_F1:
                     debug_overlay = not debug_overlay
+                elif event.key == pygame.K_F2:
+                    state_cache["show_impassable"] = not state_cache["show_impassable"]
                 elif event.key == pygame.K_SPACE:
                     camera.center_on(config.GRAVEYARDS_SOUTH["GY_S_HOME"])
             elif event.type == pygame.MOUSEWHEEL:
@@ -210,8 +211,10 @@ def main():
 
         screen.fill(config.COLOR_BG)
         draw_map(screen, camera, geom)
+        if state_cache.get("show_impassable"):
+            draw_impassable_overlay(screen, camera, geom)
         draw_ribbon(screen, font)
-        draw_debug(screen, font, camera, geom, debug_overlay)
+        draw_debug(screen, font, camera, geom, debug_overlay, state_cache)
         pygame.display.flip()
 
     pygame.quit()
