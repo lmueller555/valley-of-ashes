@@ -90,6 +90,8 @@ State (marching, fighting, retreating if used, dead, respawning)
 
 Units travel along paths/lanes defined by the map (see map_guidance).
 
+Spawned units automatically march down their assigned lane until an enemy unit enters their aggro range.
+
 Units should not require complex pathfinding for MVP; lanes can be spline/waypoint chains.
 
 Units should not stack into a single pixel: implement simple separation (“soft collision”) so dots spread slightly.
