@@ -131,10 +131,14 @@ def draw_ribbon(surface, font):
 def draw_debug(surface, font, camera: Camera, toggle):
     if not toggle:
         return
+    mx, my = pygame.mouse.get_pos()
+    cursor_world = camera.screen_to_world((mx, my))
     lines = [
         f"Camera: ({camera.x:.1f}, {camera.y:.1f})",
         f"Zoom: {camera.zoom:.2f}",
+        f"Mouse: ({mx:.0f}, {my:.0f}) -> World ({cursor_world[0]:.1f}, {cursor_world[1]:.1f})",
         "F1: toggle debug overlay",
+        "SPACE: center on home graveyard",
     ]
     y = 10
     for line in lines:
@@ -193,11 +197,12 @@ def main():
                     running = False
                 elif event.key == pygame.K_F1:
                     debug_overlay = not debug_overlay
+                elif event.key == pygame.K_SPACE:
+                    camera.center_on(config.GRAVEYARDS_SOUTH["GY_S_HOME"])
             elif event.type == pygame.MOUSEWHEEL:
                 mx, my = pygame.mouse.get_pos()
-                if config.MAP_VIEW_RECT.collidepoint(mx, my):
-                    zoom_factor = 1.1 if event.y > 0 else 0.9
-                    camera.adjust_zoom(zoom_factor)
+                zoom_factor = 1.1 if event.y > 0 else 0.9
+                camera.zoom_at((mx, my), zoom_factor)
         handle_input(camera, dt, state_cache)
 
         screen.fill(config.COLOR_BG)
