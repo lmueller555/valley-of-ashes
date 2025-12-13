@@ -1,0 +1,670 @@
+UNIT_GUIDANCE — Valley of Ashes
+
+(Canonical unit definitions + objective-defender rules. Each unit is its own appendable section.)
+
+0) Scope and Intent
+
+This document defines all unit types currently in the game:
+
+Grunt (field infantry)
+
+Lieutenant (elite field infantry)
+
+Cavalry (fast melee raider)
+
+Tower Archer (stationary objective defender)
+
+Captain (stationary strong defender in captain base)
+
+Boss (stationary win-condition unit in boss base)
+
+It also defines how units interact with structures (towers and captain bases) and the boss scaling from remaining towers.
+
+If you add a new unit later, append a new section in the same format as Sections 4–9.
+
+1) Global Unit Model (Applies to Every Unit)
+1.1 Required Fields (All Units)
+
+Every unit instance must have:
+
+unit_id (unique int)
+
+faction: PLAYER or ENEMY
+
+unit_type: enum string (e.g., "GRUNT")
+
+pos: (x: float, y: float) in world coordinates
+
+hp, max_hp
+
+damage
+
+attack_range_px
+
+aggro_range_px
+
+attack_cooldown_s
+
+attack_timer_s (counts down; attack when ≤ 0)
+
+move_speed_px_s (0 for stationary units)
+
+state: MARCHING | FIGHTING | DEFENDING | CAPTURING | DEAD | RESPAWNING
+
+lane: WEST | CENTER | EAST | NONE (NONE for stationary defenders)
+
+target_id: unit_id or None
+
+leash_anchor: (x,y) for defenders (tower/captain/boss)
+
+leash_radius_px for defenders (0 for non-leashed marchers)
+
+1.2 Deterministic Combat
+
+When target is in attack_range_px and attack_timer_s <= 0, apply damage instantly.
+
+Then set attack_timer_s = attack_cooldown_s.
+
+No RNG in MVP: no crit, no dodge, no armor.
+
+1.3 Default Target Priority
+
+When selecting an enemy from candidates in aggro_range_px:
+
+Nearest enemy by Euclidean distance
+
+Tie: lowest hp
+
+Tie: lowest unit_id (stable)
+
+1.4 Soft Separation (Anti-Stacking)
+
+To prevent dot piles:
+
+SEPARATION_RADIUS_PX = 14
+
+Apply a small repulsion vector away from nearby allied units within radius.
+
+Cap repulsion so it never exceeds 35% of unit move speed.
+
+1.5 Respawn System (Who Uses It)
+
+Uses respawn: Grunt, Lieutenant, Cavalry
+Does NOT respawn: Tower Archer, Captain, Boss
+
+Respawn logic for respawning units:
+
+On death → enter respawn queue with respawn_at_time = now + respawn_delay_s.
+
+Respawn location = nearest owned graveyard (map system).
+
+On respawn: full HP, reset state to MARCHING.
+
+2) Economy Hooks (Gold)
+2.1 Gold Attribution
+
+Gold is credited to the faction that gets the kill:
+
+A unit records last_hit_by_faction whenever it takes damage.
+
+On death, award gold to last_hit_by_faction.
+
+2.2 Gold Rewards by Unit Type
+
+(These are the initial tuned values; treat them as canonical constants.)
+
+Grunt kill reward: 3
+
+Lieutenant kill reward: 10
+
+Cavalry kill reward: 12
+
+Tower Archer kill reward: 5 (per archer in tower)
+
+Captain kill reward: 75
+
+Boss kill reward: 0 (match ends; no reward needed)
+
+2.3 Purchases (Reinforcements)
+
+Only these are purchasable:
+
+Grunt, Lieutenant, Cavalry
+
+Static defenders are not purchasable:
+
+Tower Archer, Captain, Boss
+
+(Exact UI costs are defined in each unit section.)
+
+3) Structures-as-Combatants (Towers + Captain Bases)
+
+This is here because it changes unit behavior.
+
+3.1 Towers (Objective Rules)
+
+Each side has 4 towers. Towers begin as standing and contain a garrison of Tower Archers.
+
+Tower states:
+
+STANDING: tower exists, has living archers, blocks capture progress.
+
+VULNERABLE: all tower archers are dead; capture timer may run.
+
+DESTROYED: tower is permanently removed from the match.
+
+Capturing/destroying an enemy tower requires:
+
+Defeat all tower archers in that tower (tower becomes VULNERABLE).
+
+Maintain at least 1 allied unit (any non-archer unit: Grunt/Lieutenant/Cavalry; also captains/boss if they could enter, but they shouldn’t) inside TOWER_CAPTURE_RADIUS_PX for 180 seconds (3 minutes).
+
+Capture timer rules:
+
+If VULNERABLE and occupying faction has ≥1 unit in radius and no enemy units in radius → timer counts up.
+
+If both factions present → contested, timer pauses (does not reset).
+
+If no occupying units present → timer decays back toward 0 at 2× speed (so abandoning loses progress).
+
+When timer reaches 180s → tower becomes DESTROYED immediately (no ownership flip).
+
+Permanent destruction rule:
+
+When tower is DESTROYED, it never returns.
+
+Any remaining tower-related entities (archer slots, UI button, minimap icon) are removed/greyed-out.
+
+Recommended constants:
+
+TOWER_CAPTURE_RADIUS_PX = 120
+
+TOWER_CONTEST_RADIUS_PX = 140 (optional; if different from capture radius, use contest radius for “enemy present” checks)
+
+3.2 Captain Bases (Objective Rules)
+
+Each side has 1 captain base located between midpoint and their boss base (map defines location). It contains a Captain.
+
+Captain base states:
+
+STANDING: captain alive.
+
+DESTROYED: captain dead; base permanently removed.
+
+Destruction rules:
+
+Kill the captain → base immediately becomes DESTROYED (permanent).
+
+Captain does not respawn.
+
+Destroying the captain base does not directly change boss stats (only towers do, unless changed later).
+
+4) Boss Scaling From Remaining Towers (Critical Rule)
+
+For each tower standing on a faction’s side, that faction’s boss gains +80% Max HP and +80% Damage, stacking additively.
+
+Let:
+
+n = number_of_towers_standing_for_boss_faction (0..4)
+
+mult = 1.0 + 0.8 * n
+
+Then:
+
+boss.max_hp = boss.base_max_hp * mult
+
+boss.damage = boss.base_damage * mult
+
+Dynamic update timing
+
+Recalculate immediately whenever a tower changes to DESTROYED.
+
+Current HP adjustment rule (specific + deterministic)
+
+On recalculation, maintain boss current HP ratio (prevents weird “free healing” or sudden huge drops):
+
+ratio = boss.hp / old_max_hp
+
+boss.max_hp = new_max_hp
+
+boss.hp = clamp(ratio * new_max_hp, 1, new_max_hp)
+
+This means destroying towers reduces boss max HP and also reduces current HP proportionally.
+
+UNIT SECTIONS
+
+(Each unit has its own standalone section. Append new units by copying this template.)
+
+5) UNIT: GRUNT
+5.1 Role
+
+Baseline frontline infantry. High count. Primary lane pressure. Cheap to buy.
+
+5.2 Classification
+
+unit_type = "GRUNT"
+
+tier = 1
+
+Respawns: Yes
+
+Purchasable: Yes
+
+5.3 Core Specs (Canonical)
+
+max_hp = 28
+
+damage = 3
+
+attack_range_px = 18 (melee)
+
+aggro_range_px = 140
+
+attack_cooldown_s = 1.10
+
+move_speed_px_s = 72
+
+leash_radius_px = 0 (marcher)
+
+5.4 Spawn / Respawn
+
+Base respawn delay: respawn_delay_s = 10
+
+Respawns at nearest owned graveyard.
+
+5.5 Purchase Data
+
+Cost: 10 gold
+
+Build/queue time: 0s (instant) for MVP
+
+Spawn point for purchased units: home graveyard (until you add advanced spawn logic)
+
+5.6 Default AI Behavior
+
+Lane assignment: West 32.5% / Center 35% / East 32.5%
+
+Marches lane waypoints until enemy in aggro range.
+
+Pursuit leash relative to lane centerline:
+
+may deviate up to 175px from lane centerline before dropping target.
+
+5.7 Gold on Death
+
+Reward: 3
+
+6) UNIT: LIEUTENANT
+6.1 Role
+
+Durable, higher-damage infantry. Shows up less often. Helps break stalemates.
+
+6.2 Classification
+
+unit_type = "LIEUTENANT"
+
+tier = 2
+
+Respawns: Yes
+
+Purchasable: Yes
+
+6.3 Core Specs (Canonical)
+
+max_hp = 70
+
+damage = 8
+
+attack_range_px = 22 (melee)
+
+aggro_range_px = 160
+
+attack_cooldown_s = 1.25
+
+move_speed_px_s = 66
+
+6.4 Spawn / Respawn
+
+Base respawn delay: respawn_delay_s = 16
+
+Respawns at nearest owned graveyard.
+
+6.5 Purchase Data
+
+Cost: 45 gold
+
+Build/queue time: 0s (instant) for MVP
+
+Spawn: home graveyard
+
+6.6 Default AI Behavior
+
+Same lane system as grunts.
+
+Slightly higher target priority weighting:
+
+If multiple enemies in range, prefer Cavalry first (they’re fast disruptors), then lowest HP.
+
+6.7 Gold on Death
+
+Reward: 10
+
+7) UNIT: CAVALRY
+7.1 Role
+
+Fast melee raiders that reach towers/captain base faster and pressure objectives. Lower HP than lieutenant but high impact due to speed.
+
+7.2 Classification
+
+unit_type = "CAVALRY"
+
+tier = 3
+
+Respawns: Yes
+
+Purchasable: Yes
+
+7.3 Core Specs (Canonical)
+
+max_hp = 55
+
+damage = 10
+
+attack_range_px = 20 (melee)
+
+aggro_range_px = 170
+
+attack_cooldown_s = 1.35
+
+move_speed_px_s = 108
+
+7.4 Spawn / Respawn
+
+Base respawn delay: respawn_delay_s = 20
+
+7.5 Purchase Data
+
+Cost: 70 gold
+
+Build/queue time: 0s (instant) for MVP
+
+Spawn: home graveyard
+
+7.6 Default AI Behavior (Important)
+
+Cavalry objective bias:
+
+If any enemy tower is VULNERABLE (archers dead) → cavalry tries to path to that tower to help occupy.
+
+Else if enemy captain alive and captain base reachable → cavalry biases toward captain base route.
+
+Else march normal lane.
+
+Combat behavior:
+
+Will not chase deep off-lane; max deviation from lane centerline = 220px (higher than infantry).
+
+7.7 Gold on Death
+
+Reward: 12
+
+8) UNIT: TOWER ARCHER
+8.1 Role
+
+Stationary ranged defender garrisoned inside towers. Prevents tower capture until killed.
+
+8.2 Classification
+
+unit_type = "TOWER_ARCHER"
+
+tier = 0 (not a field tier; defender class)
+
+Respawns: No
+
+Purchasable: No
+
+Movement: None (speed 0)
+
+8.3 Garrison Model (How Many Archers Per Tower)
+
+Each tower contains exactly:
+
+ARCHERS_PER_TOWER = 6
+
+When a tower spawns:
+
+Create 6 archers with leash_anchor = tower_center.
+
+They occupy fixed offsets around the tower center (so they don’t overlap):
+
+offsets (px): (-18,-10), (18,-10), (-18,10), (18,10), (0,-18), (0,18)
+
+8.4 Core Specs (Canonical)
+
+max_hp = 40
+
+damage = 6
+
+attack_range_px = 260
+
+aggro_range_px = 300
+
+attack_cooldown_s = 1.10
+
+move_speed_px_s = 0
+
+leash_radius_px = 70 (they can “shuffle” slightly only if you implement micro-adjustments; otherwise keep exact position)
+
+8.5 Targeting Behavior (Defender Priority)
+
+Archers prioritize:
+
+Enemy units currently inside TOWER_CAPTURE_RADIUS_PX
+
+Nearest enemy within range
+
+Tie-breaker: lowest HP
+
+8.6 Death and Tower Vulnerability
+
+Archers do not respawn.
+
+A tower becomes VULNERABLE only when all 6 archers are dead.
+
+8.7 Gold on Death
+
+Reward: 5 per archer
+
+9) UNIT: CAPTAIN
+9.1 Role
+
+Stationary elite defender in the captain base. Acts as a major mid-to-late objective. Killing the captain permanently destroys the captain base.
+
+9.2 Classification
+
+unit_type = "CAPTAIN"
+
+tier = 4
+
+Respawns: No
+
+Purchasable: No
+
+Movement: None (speed 0)
+
+9.3 Core Specs (Canonical)
+
+max_hp = 900
+
+damage = 26
+
+attack_range_px = 34 (melee heavy)
+
+aggro_range_px = 220
+
+attack_cooldown_s = 1.20
+
+move_speed_px_s = 0
+
+leash_anchor = captain_base_center
+
+leash_radius_px = 120 (captain never leaves base grounds)
+
+9.4 Defensive Behavior
+
+Captain only targets enemies inside its base defense radius.
+
+If no enemy in range, captain is idle.
+
+Captain does not kite; it is a “hold the line” unit.
+
+9.5 Death and Base Destruction
+
+On captain death:
+
+Captain base becomes DESTROYED permanently.
+
+Any “base defenders” (if added later) are removed or routed (future feature).
+
+9.6 Gold on Death
+
+Reward: 75
+
+10) UNIT: BOSS
+10.1 Role
+
+Final objective. Stationary. Killing the enemy boss ends the match immediately.
+
+10.2 Classification
+
+unit_type = "BOSS"
+
+tier = 5
+
+Respawns: No
+
+Purchasable: No
+
+Movement: None (speed 0)
+
+10.3 Base (Unscaled) Specs
+
+These are the boss’s base stats before tower scaling:
+
+base_max_hp = 5000
+
+base_damage = 60
+
+attack_range_px = 40 (melee cleave-like range; still single-target in MVP unless you add AoE later)
+
+aggro_range_px = 320
+
+attack_cooldown_s = 1.35
+
+move_speed_px_s = 0
+
+leash_anchor = boss_keep_center
+
+leash_radius_px = 180 (boss never leaves keep)
+
+10.4 Tower Scaling (Mandatory)
+
+Let n = towers_standing_for_this_boss_faction (0..4).
+
+mult = 1.0 + 0.8 * n
+
+Then:
+
+max_hp = base_max_hp * mult
+
+damage = base_damage * mult
+
+With 4 towers standing:
+
+mult = 1 + 0.8*4 = 4.2
+
+Boss becomes 21,000 HP and 252 damage (very hard until towers are removed)
+
+10.5 Tower Destruction Updates Boss Stats (Immediate)
+
+Whenever one of the boss faction’s towers becomes DESTROYED:
+
+Recompute mult, max_hp, and damage.
+
+Maintain HP ratio:
+
+ratio = hp / old_max_hp
+
+hp = clamp(ratio * new_max_hp, 1, new_max_hp)
+
+10.6 Targeting Behavior
+
+Boss prioritizes:
+
+Enemies inside boss keep radius (if you define a keep radius)
+
+Nearest enemy
+
+Lowest HP tie-breaker
+
+Boss does not chase beyond leash radius.
+
+10.7 Win Condition Trigger
+
+If boss HP reaches 0:
+
+set GAME_OVER = True
+
+winner = opposing faction
+
+stop spawning/respawning immediately
+
+11) Recommended Starting Conditions (So the Match Feels Alive)
+
+These are game-start spawns (not purchases):
+
+Per faction at match start:
+
+Field units spawned at home graveyard:
+
+24 Grunts
+
+6 Lieutenants
+
+2 Cavalry
+
+Each of 4 towers spawns:
+
+6 Tower Archers (total 24 archers across towers)
+
+Captain base spawns:
+
+1 Captain
+
+Boss keep spawns:
+
+1 Boss (scaled with 4 towers standing initially)
+
+Starting gold:
+
+Player: 120
+
+Enemy AI: 120
+
+12) Non-Negotiable Implementation Checklist
+
+To consider units “implemented correctly,” all must be true:
+
+ Grunt/Lieutenant/Cavalry march + fight + respawn via graveyards.
+
+ Towers spawn with 6 archers each, and cannot be progressed until all archers are dead.
+
+ Tower destruction requires 180s uncontested occupation (with pause + decay rules as specified).
+
+ Towers and captain base are permanently destroyed when completed.
+
+ Boss HP and damage scale as 1 + 0.8*n and update immediately when towers fall, preserving HP ratio.
+
+ Captain and boss never respawn.
+
+You are not allowed to change, modify, or duplicate this document. It is considered sacred.
