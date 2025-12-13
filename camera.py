@@ -23,18 +23,27 @@ class Camera:
         wy = (sy - config.MAP_VIEW_RECT.height / 2) / self.zoom + self.y
         return wx, wy
 
+    def _clamp_to_bounds(self):
+        half_w = config.MAP_VIEW_RECT.width / (2 * self.zoom)
+        half_h = config.MAP_VIEW_RECT.height / (2 * self.zoom)
+        self.x = max(half_w, min(config.MAP_W - half_w, self.x))
+        self.y = max(half_h, min(config.MAP_H - half_h, self.y))
+
     def pan(self, dx, dy):
-        self.x = max(0, min(config.MAP_W, self.x + dx))
-        self.y = max(0, min(config.MAP_H, self.y + dy))
+        self.x += dx
+        self.y += dy
+        self._clamp_to_bounds()
 
     def adjust_zoom(self, delta):
         new_zoom = max(config.ZOOM_MIN, min(config.ZOOM_MAX, self.zoom * delta))
         self.zoom = new_zoom
+        self._clamp_to_bounds()
 
     def center_on(self, pos):
         px, py = pos
-        self.x = max(0, min(config.MAP_W, px))
-        self.y = max(0, min(config.MAP_H, py))
+        self.x = px
+        self.y = py
+        self._clamp_to_bounds()
 
     def zoom_at(self, screen_pos, delta):
         """Zoom relative to the screen position inside the map view.
@@ -58,5 +67,7 @@ class Camera:
         if config.MAP_VIEW_RECT.collidepoint(*screen_pos):
             ax, ay = anchor_world
             sx, sy = screen_pos
-            self.x = max(0, min(config.MAP_W, ax - (sx - config.MAP_VIEW_RECT.width / 2) / self.zoom))
-            self.y = max(0, min(config.MAP_H, ay - (sy - config.MAP_VIEW_RECT.height / 2) / self.zoom))
+            self.x = ax - (sx - config.MAP_VIEW_RECT.width / 2) / self.zoom
+            self.y = ay - (sy - config.MAP_VIEW_RECT.height / 2) / self.zoom
+
+        self._clamp_to_bounds()
