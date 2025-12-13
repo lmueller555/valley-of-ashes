@@ -1,5 +1,7 @@
 from dataclasses import dataclass
+
 import pygame
+
 import config
 
 
