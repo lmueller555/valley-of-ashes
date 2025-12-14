@@ -18,7 +18,7 @@ class Graveyard:
     capture_time_required: float = 12.0
     respawn_timer: float = 0.0
     respawn_interval: float = 0.0
-    waiting_units: List[Dict[str, float]] = field(default_factory=list)
+    waiting_units: List[int] = field(default_factory=list)
 
 
 @dataclass
