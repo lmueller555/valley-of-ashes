@@ -513,5 +513,34 @@ class Battlefield:
                 "BOSS": 9,
                 "CAPTAIN": 7,
             }.get(unit.unit_type, 5)
-            pygame.draw.circle(surface, color, (int(sx), int(sy)), max(2, int(base_radius * camera.zoom)))
+            radius = max(2, int(base_radius * camera.zoom))
+            pygame.draw.circle(surface, color, (int(sx), int(sy)), radius)
+
+            if unit.hp < unit.max_hp:
+                ratio = unit.hp / unit.max_hp if unit.max_hp else 0
+                bar_width = {
+                    "BOSS": 30,
+                    "CAPTAIN": 22,
+                }.get(unit.unit_type, 16)
+                bar_height = {
+                    "BOSS": 5,
+                    "CAPTAIN": 4,
+                }.get(unit.unit_type, 3)
+                bar_width = max(6, int(bar_width * camera.zoom))
+                bar_height = max(2, int(bar_height * camera.zoom))
+                bar_x = int(sx - bar_width / 2)
+                bar_y = int(sy - radius - bar_height - max(2, int(3 * camera.zoom)))
+
+                if ratio >= 0.75:
+                    bar_color = config.COLOR_HEALTH_GREEN
+                elif ratio >= 0.5:
+                    bar_color = config.COLOR_HEALTH_YELLOW
+                elif ratio >= 0.25:
+                    bar_color = config.COLOR_HEALTH_ORANGE
+                else:
+                    bar_color = config.COLOR_HEALTH_RED
+
+                pygame.draw.rect(surface, config.COLOR_HEALTH_BG, (bar_x, bar_y, bar_width, bar_height))
+                fill_width = max(1, int(bar_width * ratio))
+                pygame.draw.rect(surface, bar_color, (bar_x, bar_y, fill_width, bar_height))
 
