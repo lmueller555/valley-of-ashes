@@ -36,7 +36,7 @@ def draw_bunker(surface, camera: Camera, bunker: map_data.Bunker):
         pygame.draw.rect(surface, rubble_color, rect_screen, width=2)
 
 
-def draw_tower(surface, camera: Camera, tower: map_data.Tower):
+def draw_tower(surface, camera: Camera, tower: map_data.Tower, show_capture_meter: bool = False):
     sx, sy = camera.world_to_screen(tower.center)
     core_radius = max(2, int(config.TOWER_CORE_IMPASSABLE_RADIUS_PX * camera.zoom))
     capture_radius = max(core_radius + 4, int(config.TOWER_CAPTURE_RADIUS_PX * camera.zoom))
@@ -51,6 +51,17 @@ def draw_tower(surface, camera: Camera, tower: map_data.Tower):
     pygame.draw.circle(surface, tower_color, (sx, sy), capture_radius, width=1)
     if tower.state == "VULNERABLE":
         pygame.draw.circle(surface, config.COLOR_NEUTRAL, (sx, sy), capture_radius + 6, width=1)
+        if show_capture_meter:
+            ratio = min(1.0, tower.occupy_timer / config.TOWER_CAPTURE_DURATION_S)
+            bar_w = max(28, int(60 * camera.zoom))
+            bar_h = max(4, int(6 * camera.zoom))
+            bar_x = sx - bar_w // 2
+            bar_y = sy - capture_radius - bar_h - 4
+            pygame.draw.rect(surface, config.COLOR_HEALTH_BG, (bar_x, bar_y, bar_w, bar_h))
+            fill = int(bar_w * ratio)
+            attacker_color = config.COLOR_ENEMY if tower.faction_owner == "PLAYER" else config.COLOR_PLAYER
+            pygame.draw.rect(surface, attacker_color, (bar_x, bar_y, fill, bar_h))
+            pygame.draw.rect(surface, config.COLOR_WHITE, (bar_x, bar_y, bar_w, bar_h), width=1)
 
 
 def draw_graveyard(surface, camera: Camera, pos, owner_color):
@@ -89,7 +100,7 @@ def draw_lane(surface, camera: Camera, points):
     pygame.draw.lines(surface, config.COLOR_LANE, False, transformed, width=1)
 
 
-def draw_map(surface, camera: Camera, geom):
+def draw_map(surface, camera: Camera, geom, show_objective_debug: bool = False):
     surface.set_clip(config.MAP_VIEW_RECT)
     pygame.draw.rect(surface, config.COLOR_TERRAIN, config.MAP_VIEW_RECT)
 
@@ -122,7 +133,7 @@ def draw_map(surface, camera: Camera, geom):
 
     # Towers
     for tower in geom.towers:
-        draw_tower(surface, camera, tower)
+        draw_tower(surface, camera, tower, show_capture_meter=show_objective_debug)
 
     # Bunkers
     for bunker in geom.bunkers:
@@ -194,13 +205,18 @@ def draw_spatial_grid(surface, camera: Camera, cell_size: float):
     surface.blit(overlay, (0, 0))
 
 
-def draw_button(surface, font, button: Button, enabled: bool):
+def draw_button(surface, font, button: Button, enabled: bool, hovered: bool, pressed: bool):
     base_color = (70, 110, 80) if enabled else (60, 60, 60)
+    if hovered and enabled:
+        base_color = (80, 140, 95)
+    if pressed and enabled:
+        base_color = (65, 120, 85)
     border_color = (150, 200, 160) if enabled else (90, 90, 90)
     pygame.draw.rect(surface, base_color, button.rect)
     pygame.draw.rect(surface, border_color, button.rect, width=2)
     label = f"{button.label} ({button.cost})"
-    text = font.render(label, True, config.COLOR_WHITE)
+    text_color = config.COLOR_WHITE if enabled else (150, 150, 150)
+    text = font.render(label, True, text_color)
     text_pos = text.get_rect(center=button.rect.center)
     surface.blit(text, text_pos)
 
@@ -241,9 +257,12 @@ def draw_ribbon(surface, font, battlefield: Battlefield, buttons):
     )
     surface.blit(sub, (config.RIBBON_RECT.left + 20, config.RIBBON_RECT.top + 80))
 
+    mouse_pos = pygame.mouse.get_pos()
+    mouse_down = pygame.mouse.get_pressed()[0]
     for button in buttons:
         enabled = battlefield.gold["PLAYER"] >= button.cost and not battlefield.game_over
-        draw_button(surface, font, button, enabled)
+        hovered = button.rect.collidepoint(mouse_pos)
+        draw_button(surface, font, button, enabled, hovered, hovered and mouse_down)
 
 
 def draw_debug(surface, font, camera: Camera, geom, toggle, debug_state):
@@ -408,7 +427,7 @@ def main():
         ai.update(dt)
 
         screen.fill(config.COLOR_BG)
-        draw_map(screen, camera, geom)
+        draw_map(screen, camera, geom, show_objective_debug=debug_overlay)
         battlefield.draw(screen, camera)
         for gy in geom.graveyards:
             draw_graveyard_status(screen, camera, font, gy)
