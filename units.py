@@ -169,6 +169,8 @@ class Battlefield:
             else:
                 pos = self.player_home if faction == "PLAYER" else self.enemy_home
         uid = self._alloc_id()
+        max_respawns = config.UNIT_RESPAWNS.get(unit_type, 0)
+        respawns = max_respawns > 0
         unit = Unit(
             unit_id=uid,
             faction=faction,
@@ -189,8 +191,9 @@ class Battlefield:
             leash_radius_px=0.0,
             respawn_delay_s=stats["respawn_delay_s"],
             gold_reward=stats["gold_reward"],
+            respawns=respawns,
         )
-        unit.remaining_respawns = config.UNIT_MAX_RESPAWNS if unit.respawns else 0
+        unit.remaining_respawns = stats.get("max_respawns", max_respawns if respawns else 0)
         self.units[uid] = unit
         self._reset_waypoint_progress(unit)
         return unit
