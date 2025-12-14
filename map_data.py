@@ -16,6 +16,9 @@ class Graveyard:
     owner: str = "NEUTRAL"
     capture_timer: float = 0.0
     capture_time_required: float = 12.0
+    respawn_timer: float = 0.0
+    respawn_interval: float = config.GY_RESPAWN_INTERVAL
+    waiting_units: List[int] = field(default_factory=list)
 
 
 @dataclass
