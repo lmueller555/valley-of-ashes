@@ -211,7 +211,7 @@ UNIT_RESPAWNS = {
 # Unit stats (from unit_guidance)
 UNIT_STATS = {
     "GRUNT": {
-        "max_hp": 28,
+        "max_hp": 56,
         "damage": 3,
         "attack_range_px": 18,
         "aggro_range_px": 140,
@@ -222,7 +222,7 @@ UNIT_STATS = {
         "gold_reward": 3,
     },
     "LIEUTENANT": {
-        "max_hp": 70,
+        "max_hp": 140,
         "damage": 8,
         "attack_range_px": 22,
         "aggro_range_px": 160,
@@ -233,7 +233,7 @@ UNIT_STATS = {
         "gold_reward": 10,
     },
     "BULWARK": {
-        "max_hp": 140,
+        "max_hp": 280,
         "damage": 2,
         "attack_range_px": 22,
         "aggro_range_px": 160,
@@ -245,7 +245,7 @@ UNIT_STATS = {
         "max_respawns": UNIT_RESPAWNS["BULWARK"],
     },
     "CAVALRY": {
-        "max_hp": 55,
+        "max_hp": 110,
         "damage": 10,
         "attack_range_px": 20,
         "aggro_range_px": 170,
@@ -256,7 +256,7 @@ UNIT_STATS = {
         "gold_reward": 12,
     },
     "HEALER": {
-        "max_hp": 65,
+        "max_hp": 130,
         "damage": 5,
         "attack_range_px": 18,
         "aggro_range_px": 140,
@@ -267,7 +267,7 @@ UNIT_STATS = {
         "gold_reward": 18,
     },
     "ARCHER": {
-        "max_hp": 40,
+        "max_hp": 120,
         "damage": 6,
         "attack_range_px": 260,
         "aggro_range_px": 300,
@@ -278,7 +278,7 @@ UNIT_STATS = {
         "gold_reward": 5,
     },
     "TOWER_ARCHER": {
-        "max_hp": 40,
+        "max_hp": 120,
         "damage": 6,
         "attack_range_px": 260,
         "aggro_range_px": 300,
@@ -289,7 +289,7 @@ UNIT_STATS = {
         "gold_reward": 5,
     },
     "CAPTAIN": {
-        "max_hp": 900,
+        "max_hp": 1800,
         "damage": 26,
         "attack_range_px": 34,
         "aggro_range_px": 220,
