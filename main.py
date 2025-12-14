@@ -162,12 +162,22 @@ def draw_spatial_grid(surface, camera: Camera, cell_size: float):
     surface.blit(overlay, (0, 0))
 
 
-def draw_ribbon(surface, font):
+def draw_ribbon(surface, font, battlefield: Battlefield):
     pygame.draw.rect(surface, config.COLOR_RIBBON, config.RIBBON_RECT)
     header = font.render("Valley of Ashes — Control Ribbon (placeholder)", True, config.COLOR_WHITE)
     surface.blit(header, (20, config.MAP_VIEW_HEIGHT + 20))
-    sub = font.render("Purchases, upgrades, and HUD will appear here per UI guidance.", True, (180, 180, 180))
-    surface.blit(sub, (20, config.MAP_VIEW_HEIGHT + 50))
+
+    gold_text = font.render(
+        f"Gold — Player: {battlefield.gold['PLAYER']}  Enemy: {battlefield.gold['ENEMY']}",
+        True,
+        config.COLOR_WHITE,
+    )
+    surface.blit(gold_text, (20, config.MAP_VIEW_HEIGHT + 50))
+
+    sub = font.render(
+        "Purchases, upgrades, and HUD will appear here per UI guidance.", True, (180, 180, 180)
+    )
+    surface.blit(sub, (20, config.MAP_VIEW_HEIGHT + 80))
 
 
 def draw_debug(surface, font, camera: Camera, geom, toggle, debug_state):
@@ -204,6 +214,8 @@ def draw_debug(surface, font, camera: Camera, geom, toggle, debug_state):
         f"Spatial grid: {'ON' if debug_state.get('show_spatial_grid') else 'OFF'}",
         f"Units — Player: {unit_counts['PLAYER']}, Enemy: {unit_counts['ENEMY']}",
         f"Respawn queue: {respawns}",
+        f"Gold — Player: {battlefield.gold['PLAYER'] if battlefield else 0}, Enemy: {battlefield.gold['ENEMY'] if battlefield else 0}",
+        f"Kills — Player: {battlefield.kills['PLAYER'] if battlefield else 0}, Enemy: {battlefield.kills['ENEMY'] if battlefield else 0}",
     ]
     y = 10
     for line in lines:
@@ -294,7 +306,7 @@ def main():
             draw_impassable_overlay(screen, camera, geom)
         if state_cache.get("show_spatial_grid"):
             draw_spatial_grid(screen, camera, battlefield.spatial.cell_size)
-        draw_ribbon(screen, font)
+        draw_ribbon(screen, font, battlefield)
         draw_debug(screen, font, camera, geom, debug_overlay, state_cache)
         pygame.display.flip()
 

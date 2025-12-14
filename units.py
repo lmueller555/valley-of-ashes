@@ -33,6 +33,7 @@ class Unit:
     leash_radius_px: float
     last_hit_by_faction: Optional[str] = None
     respawn_delay_s: float = 0.0
+    gold_reward: int = 0
 
     def is_alive(self) -> bool:
         return self.state not in {"DEAD", "RESPAWNING"}
@@ -75,6 +76,12 @@ class Battlefield:
         self.spatial = SpatialHash()
         self.time_s = 0.0
 
+        self.gold: Dict[str, int] = {
+            "PLAYER": config.STARTING_GOLD_PLAYER,
+            "ENEMY": config.STARTING_GOLD_ENEMY,
+        }
+        self.kills: Dict[str, int] = {"PLAYER": 0, "ENEMY": 0}
+
         self.player_home = config.GRAVEYARDS_SOUTH["GY_S_HOME"]
         self.enemy_home = config.GRAVEYARDS_NORTH["GY_N_HOME"]
 
@@ -115,6 +122,7 @@ class Battlefield:
             leash_anchor=pos,
             leash_radius_px=0.0,
             respawn_delay_s=stats["respawn_delay_s"],
+            gold_reward=stats["gold_reward"],
         )
         self.units[uid] = unit
         return unit
@@ -195,11 +203,26 @@ class Battlefield:
             if dist2 > unit.aggro_range_px * unit.aggro_range_px:
                 continue
             if best_id is None or dist2 < best_dist2 or (
-                dist2 == best_dist2 and enemy.hp < self.units[best_id].hp
+                dist2 == best_dist2
+                and (enemy.hp < self.units[best_id].hp or (
+                    enemy.hp == self.units[best_id].hp and enemy.unit_id < best_id
+                ))
             ):
                 best_id = enemy.unit_id
                 best_dist2 = dist2
         return best_id
+
+    def _on_unit_death(self, unit: Unit):
+        if unit.state in {"DEAD", "RESPAWNING"}:
+            return
+
+        unit.state = "RESPAWNING"
+        self.respawn_queue.append((self.time_s + unit.respawn_delay_s, unit.unit_id))
+
+        killer_faction = unit.last_hit_by_faction
+        if killer_faction and killer_faction != unit.faction:
+            self.gold[killer_faction] = self.gold.get(killer_faction, 0) + unit.gold_reward
+            self.kills[killer_faction] = self.kills.get(killer_faction, 0) + 1
 
     def _advance_waypoint(self, unit: Unit, dt: float):
         waypoints = self._lane_waypoints(unit.faction, unit.lane)
@@ -270,8 +293,7 @@ class Battlefield:
                     target.last_hit_by_faction = unit.faction
                     unit.attack_timer_s = unit.attack_cooldown_s
                     if target.hp <= 0:
-                        target.state = "DEAD"
-                        self.respawn_queue.append((self.time_s + target.respawn_delay_s, target.unit_id))
+                        self._on_unit_death(target)
         else:
             self._advance_waypoint(unit, dt)
 
@@ -290,6 +312,7 @@ class Battlefield:
                 unit.state = "MARCHING"
                 unit.target_id = None
                 unit.attack_timer_s = unit.attack_cooldown_s
+                unit.last_hit_by_faction = None
             else:
                 remaining.append((respawn_time, uid))
         self.respawn_queue = remaining
