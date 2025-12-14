@@ -79,6 +79,15 @@ class SpatialHash:
 
 
 class Battlefield:
+    TOWER_ARCHER_OFFSETS = [
+        (-18, -10),
+        (18, -10),
+        (-18, 10),
+        (18, 10),
+        (0, -18),
+        (0, 18),
+    ]
+
     def __init__(self, geom: map_data.MapGeometry):
         self.geom = geom
         self.units: Dict[UnitId, Unit] = {}
@@ -118,17 +127,10 @@ class Battlefield:
         """Spawn archers, captains, and bosses defined in guidance."""
 
         # Tower archers
-        archer_offsets = [(-18, -10), (18, -10), (-18, 10), (18, 10), (0, -18), (0, 18)]
         for tower in self.geom.towers:
-            for dx, dy in archer_offsets:
+            for dx, dy in self.TOWER_ARCHER_OFFSETS:
                 pos = (tower.center[0] + dx, tower.center[1] + dy)
-                archer = self.spawn_unit(tower.faction_owner, "TOWER_ARCHER", lane="NONE", pos=pos)
-                archer.state = "DEFENDING"
-                archer.leash_anchor = tower.center
-                archer.leash_radius_px = config.TOWER_CAPTURE_RADIUS_PX
-                archer.respawns = False
-                archer.remaining_respawns = 0
-                archer.structure_id = tower.tower_id
+                self._spawn_archer_for_tower(tower, pos)
 
         # Captains
         for bunker in self.geom.bunkers:
@@ -266,12 +268,68 @@ class Battlefield:
         cost = config.UNIT_STATS[unit_type]["cost"]
         if self.gold.get(faction, 0) < cost:
             return False
+
+        if unit_type == "ARCHER":
+            if not self._purchase_archer(faction):
+                return False
+            self.gold[faction] -= cost
+            return True
+
         chosen_lane = lane if lane is not None else self._next_lane()
         if lane is None:
             # Only advance rotation when we selected lane internally
             pass
         self.gold[faction] -= cost
         self.spawn_unit(faction, unit_type, chosen_lane)
+        return True
+
+    def _available_tower_archer_slots(self, faction: str) -> List[map_data.Tower]:
+        return [
+            tower
+            for tower in self.geom.towers
+            if tower.faction_owner == faction
+            and tower.state != "DESTROYED"
+            and tower.archers_alive < config.ARCHERS_PER_TOWER
+        ]
+
+    def has_archer_slot(self, faction: str) -> bool:
+        return bool(self._available_tower_archer_slots(faction))
+
+    def _next_archer_position(self, tower: map_data.Tower) -> Tuple[float, float]:
+        living_positions = {
+            unit.pos
+            for unit in self.units.values()
+            if unit.is_alive()
+            and unit.unit_type == "TOWER_ARCHER"
+            and unit.structure_id == tower.tower_id
+        }
+        for dx, dy in self.TOWER_ARCHER_OFFSETS:
+            candidate = (tower.center[0] + dx, tower.center[1] + dy)
+            if candidate not in living_positions:
+                return candidate
+        return tower.center
+
+    def _spawn_archer_for_tower(self, tower: map_data.Tower, pos: Optional[Tuple[float, float]] = None):
+        pos = pos if pos is not None else self._next_archer_position(tower)
+        archer = self.spawn_unit(tower.faction_owner, "TOWER_ARCHER", lane="NONE", pos=pos)
+        archer.state = "DEFENDING"
+        archer.leash_anchor = tower.center
+        archer.leash_radius_px = config.TOWER_CAPTURE_RADIUS_PX
+        archer.respawns = False
+        archer.remaining_respawns = 0
+        archer.structure_id = tower.tower_id
+        tower.archers_alive = min(config.ARCHERS_PER_TOWER, tower.archers_alive + 1)
+        if tower.state == "VULNERABLE":
+            tower.state = "STANDING"
+            tower.occupy_timer = 0.0
+        return archer
+
+    def _purchase_archer(self, faction: str) -> bool:
+        candidates = self._available_tower_archer_slots(faction)
+        if not candidates:
+            return False
+        target = min(candidates, key=lambda t: (t.archers_alive, t.tower_id))
+        self._spawn_archer_for_tower(target)
         return True
 
     def recall_cooldown_remaining(self, faction: str) -> float:
@@ -940,6 +998,10 @@ class Battlefield:
                 continue
 
             owner = tower.faction_owner
+
+            if tower.state == "VULNERABLE" and tower.archers_alive > 0:
+                tower.state = "STANDING"
+                tower.occupy_timer = 0.0
 
             if tower.state == "STANDING" and tower.archers_alive == 0:
                 tower.state = "VULNERABLE"

@@ -271,6 +271,17 @@ UNIT_STATS = {
         "cost": 100,
         "gold_reward": 18,
     },
+    "ARCHER": {
+        "max_hp": 40,
+        "damage": 6,
+        "attack_range_px": 260,
+        "aggro_range_px": 300,
+        "attack_cooldown_s": 1.10,
+        "move_speed_px_s": 0,
+        "respawn_delay_s": 0,
+        "cost": 200,
+        "gold_reward": 5,
+    },
     "TOWER_ARCHER": {
         "max_hp": 40,
         "damage": 6,

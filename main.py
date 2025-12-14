@@ -248,6 +248,7 @@ def build_purchase_buttons(font):
         ("Buy Cavalry", "CAVALRY"),
         ("Buy Bulwark", "BULWARK"),
         ("Buy Healer", "HEALER"),
+        ("Buy Archer", "ARCHER"),
     ]
     for label, unit_type in data:
         rect = pygame.Rect(x, y, width, height)
@@ -283,6 +284,8 @@ def draw_ribbon(surface, font, battlefield: Battlefield, buttons):
         show_cost = button.action == "purchase"
         if button.action == "purchase":
             enabled = enabled and battlefield.gold["PLAYER"] >= button.cost
+            if button.unit_type == "ARCHER":
+                enabled = enabled and battlefield.has_archer_slot("PLAYER")
         elif button.action == "recall":
             cooldown = battlefield.recall_cooldown_remaining("PLAYER")
             channel = battlefield.recall_channels.get("PLAYER")
