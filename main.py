@@ -3,10 +3,6 @@ import math
 import pygame
 
 import config
-import math
-import pygame
-
-import config
 import map_data
 from camera import Camera
 from map_data import build_map_geometry
@@ -191,6 +187,14 @@ def draw_debug(surface, font, camera: Camera, geom, toggle, debug_state):
     cursor_world = camera.screen_to_world((mx, my))
     passable = map_data.is_point_passable(cursor_world, geom)
     tower_states = ", ".join([f"{t.tower_id}:{t.state[:3]}" for t in geom.towers])
+    tower_details = []
+    for t in geom.towers:
+        detail = f"{t.tower_id}:{t.state[:3]} A{t.archers_alive}"
+        if t.state == "VULNERABLE":
+            detail += f" occ={t.occupy_timer:05.1f}s"
+            if t.contested:
+                detail += " (contested)"
+        tower_details.append(detail)
     bunker_states = ", ".join([f"{b.bunker_id}:{b.state[:3]}" for b in geom.bunkers])
     battlefield: Battlefield = debug_state.get("battlefield")
     unit_counts = {"PLAYER": 0, "ENEMY": 0}
@@ -220,6 +224,7 @@ def draw_debug(surface, font, camera: Camera, geom, toggle, debug_state):
         "SPACE: center on home graveyard",
         f"Towers: {len(geom.towers)} (capture r={config.TOWER_CAPTURE_RADIUS_PX})",
         f"Tower states: {tower_states}",
+        "  " + " | ".join(tower_details),
         f"Bunkers: {len(geom.bunkers)}",
         f"Bunker states: {bunker_states}",
         f"Graveyards: {len(geom.graveyards)}",
