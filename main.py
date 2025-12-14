@@ -1,4 +1,5 @@
 import math
+from dataclasses import dataclass
 
 import pygame
 
@@ -6,7 +7,15 @@ import config
 import map_data
 from camera import Camera
 from map_data import build_map_geometry
-from units import Battlefield
+from units import Battlefield, MacroAI
+
+
+@dataclass
+class Button:
+    rect: pygame.Rect
+    label: str
+    cost: int
+    unit_type: str
 
 
 def world_rect_to_screen(camera: Camera, rect: pygame.Rect) -> pygame.Rect:
@@ -162,7 +171,37 @@ def draw_spatial_grid(surface, camera: Camera, cell_size: float):
     surface.blit(overlay, (0, 0))
 
 
-def draw_ribbon(surface, font, battlefield: Battlefield):
+def draw_button(surface, font, button: Button, enabled: bool):
+    base_color = (70, 110, 80) if enabled else (60, 60, 60)
+    border_color = (150, 200, 160) if enabled else (90, 90, 90)
+    pygame.draw.rect(surface, base_color, button.rect)
+    pygame.draw.rect(surface, border_color, button.rect, width=2)
+    label = f"{button.label} ({button.cost})"
+    text = font.render(label, True, config.COLOR_WHITE)
+    text_pos = text.get_rect(center=button.rect.center)
+    surface.blit(text, text_pos)
+
+
+def build_purchase_buttons(font):
+    buttons = []
+    padding = 12
+    width = 160
+    height = 36
+    x = config.RIBBON_RECT.left + 20
+    y = config.RIBBON_RECT.top + 110
+    data = [
+        ("Buy Grunt", "GRUNT"),
+        ("Buy Lieutenant", "LIEUTENANT"),
+        ("Buy Cavalry", "CAVALRY"),
+    ]
+    for label, unit_type in data:
+        rect = pygame.Rect(x, y, width, height)
+        buttons.append(Button(rect, label, config.UNIT_STATS[unit_type]["cost"], unit_type))
+        x += width + padding
+    return buttons
+
+
+def draw_ribbon(surface, font, battlefield: Battlefield, buttons):
     pygame.draw.rect(surface, config.COLOR_RIBBON, config.RIBBON_RECT)
     header = font.render("Valley of Ashes — Control Ribbon (placeholder)", True, config.COLOR_WHITE)
     surface.blit(header, (config.RIBBON_RECT.left + 20, config.RIBBON_RECT.top + 20))
@@ -178,6 +217,10 @@ def draw_ribbon(surface, font, battlefield: Battlefield):
         "Purchases, upgrades, and HUD will appear here per UI guidance.", True, (180, 180, 180)
     )
     surface.blit(sub, (config.RIBBON_RECT.left + 20, config.RIBBON_RECT.top + 80))
+
+    for button in buttons:
+        enabled = battlefield.gold["PLAYER"] >= button.cost and not battlefield.game_over
+        draw_button(surface, font, button, enabled)
 
 
 def draw_debug(surface, font, camera: Camera, geom, toggle, debug_state):
@@ -196,6 +239,11 @@ def draw_debug(surface, font, camera: Camera, geom, toggle, debug_state):
                 detail += " (contested)"
         tower_details.append(detail)
     bunker_states = ", ".join([f"{b.bunker_id}:{b.state[:3]}" for b in geom.bunkers])
+    gy_details = []
+    for gy in geom.graveyards:
+        gy_details.append(
+            f"{gy.gy_id}:{gy.owner[0]} timer {gy.capture_timer:04.1f}/{gy.capture_time_required:.0f}"
+        )
     battlefield: Battlefield = debug_state.get("battlefield")
     unit_counts = {"PLAYER": 0, "ENEMY": 0}
     respawns = 0
@@ -228,6 +276,7 @@ def draw_debug(surface, font, camera: Camera, geom, toggle, debug_state):
         f"Bunkers: {len(geom.bunkers)}",
         f"Bunker states: {bunker_states}",
         f"Graveyards: {len(geom.graveyards)}",
+        "  " + " | ".join(gy_details),
         f"Impassable overlay: {'ON' if debug_state.get('show_impassable') else 'OFF'}",
         f"Spatial grid: {'ON' if debug_state.get('show_spatial_grid') else 'OFF'}",
         f"Units — Player: {unit_counts['PLAYER']}, Enemy: {unit_counts['ENEMY']}",
@@ -270,6 +319,14 @@ def handle_input(camera: Camera, dt, debug_state):
         debug_state["last_mouse"] = None
 
 
+def handle_buttons(battlefield: Battlefield, buttons, mouse_pos):
+    if battlefield.game_over:
+        return
+    for button in buttons:
+        if button.rect.collidepoint(mouse_pos):
+            battlefield.purchase_unit("PLAYER", button.unit_type)
+
+
 def main():
     pygame.init()
     display_info = pygame.display.Info()
@@ -282,9 +339,12 @@ def main():
     camera = Camera()
     geom = build_map_geometry()
     battlefield = Battlefield(geom)
+    ai = MacroAI(battlefield)
+    battlefield.ai_controller = ai
     starting_counts = {"GRUNT": 24, "LIEUTENANT": 6, "CAVALRY": 2}
     battlefield.seed_wave("PLAYER", starting_counts)
     battlefield.seed_wave("ENEMY", starting_counts)
+    buttons = build_purchase_buttons(font)
     debug_overlay = False
     state_cache = {
         "last_mouse": None,
@@ -315,9 +375,13 @@ def main():
                 if config.MAP_VIEW_RECT.collidepoint(mx, my):
                     zoom_factor = 1.1 if event.y > 0 else 0.9
                     camera.zoom_at((mx, my), zoom_factor)
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if config.RIBBON_RECT.collidepoint(*event.pos):
+                    handle_buttons(battlefield, buttons, event.pos)
         handle_input(camera, dt, state_cache)
 
         battlefield.update(dt)
+        ai.update(dt)
 
         screen.fill(config.COLOR_BG)
         draw_map(screen, camera, geom)
@@ -326,8 +390,17 @@ def main():
             draw_impassable_overlay(screen, camera, geom)
         if state_cache.get("show_spatial_grid"):
             draw_spatial_grid(screen, camera, battlefield.spatial.cell_size)
-        draw_ribbon(screen, font, battlefield)
+        draw_ribbon(screen, font, battlefield, buttons)
         draw_debug(screen, font, camera, geom, debug_overlay, state_cache)
+        if battlefield.game_over:
+            overlay = pygame.Surface((config.SCREEN_WIDTH, config.SCREEN_HEIGHT), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 120))
+            screen.blit(overlay, (0, 0))
+            winner_text = font.render(f"GAME OVER — Winner: {battlefield.winner}", True, config.COLOR_WHITE)
+            screen.blit(
+                winner_text,
+                winner_text.get_rect(center=(config.SCREEN_WIDTH // 2, config.SCREEN_HEIGHT // 2)),
+            )
         pygame.display.flip()
 
     pygame.quit()

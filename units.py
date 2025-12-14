@@ -87,8 +87,12 @@ class Battlefield:
         }
         self.kills: Dict[str, int] = {"PLAYER": 0, "ENEMY": 0}
 
+        self.game_over = False
+        self.winner: Optional[str] = None
+
         self.player_home = config.GRAVEYARDS_SOUTH["GY_S_HOME"]
         self.enemy_home = config.GRAVEYARDS_NORTH["GY_N_HOME"]
+        self._lane_purchase_index = 0
 
         self._spawn_defenders()
 
@@ -137,6 +141,8 @@ class Battlefield:
         self._update_boss_scaling("PLAYER")
         self._update_boss_scaling("ENEMY")
 
+        self.ai_controller = None
+
     def _lane_waypoints(self, faction: str, lane: str) -> List[Tuple[float, float]]:
         pts = config.LANE_WAYPOINTS[lane]
         if faction == "PLAYER":
@@ -183,8 +189,28 @@ class Battlefield:
                 lane_index += 1
                 self.spawn_unit(faction, unit_type, lane)
 
+    def _next_lane(self) -> str:
+        lanes = ["WEST", "CENTER", "EAST"]
+        lane = lanes[self._lane_purchase_index % len(lanes)]
+        self._lane_purchase_index += 1
+        return lane
+
+    def purchase_unit(self, faction: str, unit_type: str, lane: Optional[str] = None) -> bool:
+        cost = config.UNIT_STATS[unit_type]["cost"]
+        if self.gold.get(faction, 0) < cost:
+            return False
+        chosen_lane = lane if lane is not None else self._next_lane()
+        if lane is None:
+            # Only advance rotation when we selected lane internally
+            pass
+        self.gold[faction] -= cost
+        self.spawn_unit(faction, unit_type, chosen_lane)
+        return True
+
     def _nearest_graveyard(self, faction: str, pos: Tuple[float, float]) -> Tuple[float, float]:
-        owned = [gy for gy in self.geom.graveyards if gy.starting_owner == faction]
+        owned = [gy for gy in self.geom.graveyards if gy.owner == faction]
+        if not owned:
+            return self.player_home if faction == "PLAYER" else self.enemy_home
         best = owned[0]
         best_d2 = (best.pos[0] - pos[0]) ** 2 + (best.pos[1] - pos[1]) ** 2
         for gy in owned[1:]:
@@ -342,6 +368,9 @@ class Battlefield:
                     bunker.captain_alive = False
                     map_data.destroy_bunker(bunker)
                     break
+        if unit.unit_type == "BOSS":
+            self.game_over = True
+            self.winner = self._enemy_faction(unit.faction)
 
         killer_faction = unit.last_hit_by_faction
         if killer_faction and killer_faction != unit.faction:
@@ -493,15 +522,47 @@ class Battlefield:
                     map_data.destroy_tower(tower)
                     self._update_boss_scaling(owner)
 
+    def _update_graveyards(self, dt: float):
+        for gy in self.geom.graveyards:
+            # Count units in capture radius
+            counts = {"PLAYER": 0, "ENEMY": 0}
+            for unit in self.units.values():
+                if not unit.is_alive() or unit.unit_type == "TOWER_ARCHER":
+                    continue
+                dx = unit.pos[0] - gy.pos[0]
+                dy = unit.pos[1] - gy.pos[1]
+                dist2 = dx * dx + dy * dy
+                if dist2 <= gy.capture_radius * gy.capture_radius:
+                    counts[unit.faction] += 1
+
+            occupier = None
+            if counts["PLAYER"] > 0 and counts["ENEMY"] == 0:
+                occupier = "PLAYER"
+            elif counts["ENEMY"] > 0 and counts["PLAYER"] == 0:
+                occupier = "ENEMY"
+
+            if occupier is not None and occupier != gy.owner:
+                gy.capture_timer += dt
+            elif gy.capture_timer > 0 and occupier is None:
+                gy.capture_timer = max(0.0, gy.capture_timer - dt * config.GY_CAPTURE_DECAY_RATE)
+
+            if gy.capture_timer >= gy.capture_time_required:
+                gy.owner = occupier if occupier else gy.owner
+                gy.capture_timer = 0.0
+
 
     def update(self, dt: float):
         self.time_s += dt
+        if getattr(self, "game_over", False):
+            return
+
         self._update_spatial()
         for unit in self.units.values():
             self._update_unit(unit, dt)
         self._apply_separation(dt)
         self._process_respawns()
         self._update_tower_states(dt)
+        self._update_graveyards(dt)
 
     def draw(self, surface, camera):
         for unit in self.units.values():
@@ -543,4 +604,80 @@ class Battlefield:
                 pygame.draw.rect(surface, config.COLOR_HEALTH_BG, (bar_x, bar_y, bar_width, bar_height))
                 fill_width = max(1, int(bar_width * ratio))
                 pygame.draw.rect(surface, bar_color, (bar_x, bar_y, fill_width, bar_height))
+
+
+class MacroAI:
+    def __init__(self, battlefield: Battlefield):
+        self.battlefield = battlefield
+        self.sense_timer = 0.0
+        self.decision_timer = 0.0
+        self.cached_counts = {"PLAYER": 0, "ENEMY": 0}
+        self.purchase_cooldowns: Dict[str, float] = {key: -999.0 for key in config.AI_PURCHASE_COOLDOWNS}
+        self.lane_index = 0
+
+    def _count_active_units(self):
+        counts = {"PLAYER": 0, "ENEMY": 0}
+        for unit in self.battlefield.units.values():
+            if unit.is_alive() and unit.unit_type not in {"TOWER_ARCHER", "CAPTAIN", "BOSS"}:
+                counts[unit.faction] += 1
+        self.cached_counts = counts
+
+    def _pick_lane(self) -> str:
+        lanes = ["WEST", "CENTER", "EAST"]
+        lane = lanes[self.lane_index % len(lanes)]
+        self.lane_index += 1
+        return lane
+
+    def _can_purchase(self, unit_type: str) -> bool:
+        now = self.battlefield.time_s
+        cooldown = config.AI_PURCHASE_COOLDOWNS.get(unit_type, 0.0)
+        return now - self.purchase_cooldowns.get(unit_type, -999.0) >= cooldown
+
+    def _attempt_purchase(self, unit_type: str) -> bool:
+        if not self._can_purchase(unit_type):
+            return False
+        lane_override = self._pick_lane()
+        cost = config.UNIT_STATS[unit_type]["cost"]
+        if self.battlefield.gold["ENEMY"] < cost:
+            return False
+        success = self.battlefield.purchase_unit("ENEMY", unit_type, lane_override)
+        if not success:
+            return False
+        self.purchase_cooldowns[unit_type] = self.battlefield.time_s
+        return True
+
+    def _decision_tick(self):
+        if self.battlefield.game_over:
+            return
+        purchases = 0
+        gold_spent = 0
+        max_spend = self.battlefield.gold["ENEMY"] * config.AI_SPEND_FRACTION_PER_TICK
+        target_order: List[str]
+        if self.cached_counts["ENEMY"] < self.cached_counts["PLAYER"]:
+            target_order = ["GRUNT", "LIEUTENANT", "CAVALRY"]
+        else:
+            target_order = ["LIEUTENANT", "CAVALRY", "GRUNT"]
+
+        while purchases < config.AI_MAX_PURCHASES_PER_TICK and gold_spent <= max_spend:
+            bought = False
+            for unit_type in target_order:
+                if self._attempt_purchase(unit_type):
+                    purchases += 1
+                    gold_spent += config.UNIT_STATS[unit_type]["cost"]
+                    bought = True
+                    break
+            if not bought:
+                break
+
+    def update(self, dt: float):
+        if self.battlefield.game_over:
+            return
+        self.sense_timer += dt
+        self.decision_timer += dt
+        if self.sense_timer >= config.AI_SENSE_INTERVAL:
+            self._count_active_units()
+            self.sense_timer = 0.0
+        if self.decision_timer >= config.AI_DECISION_INTERVAL:
+            self._decision_tick()
+            self.decision_timer = 0.0
 
