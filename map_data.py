@@ -13,6 +13,9 @@ class Graveyard:
     spawn_radius: float
     capture_radius: float
     starting_owner: str
+    owner: str = "NEUTRAL"
+    capture_timer: float = 0.0
+    capture_time_required: float = 12.0
 
 
 @dataclass
@@ -72,11 +75,39 @@ def build_graveyards() -> List[Graveyard]:
     for gy_id, pos in config.GRAVEYARDS_SOUTH.items():
         spawn_radius = config.GY_CENTER_SPAWN_RADIUS if gy_id == "GY_CENTER" else config.GY_SPAWN_RADIUS
         capture_radius = config.GY_CENTER_CAPTURE_RADIUS if gy_id == "GY_CENTER" else config.GY_CAPTURE_RADIUS
-        graveyards.append(Graveyard(gy_id, pos, spawn_radius, capture_radius, "PLAYER" if gy_id != "GY_CENTER" else "NEUTRAL"))
+        capture_time = (
+            config.GY_CAPTURE_TIME_CENTER if gy_id == "GY_CENTER" else config.GY_CAPTURE_TIME_HOME_FORWARD
+        )
+        owner = "PLAYER" if gy_id != "GY_CENTER" else "NEUTRAL"
+        graveyards.append(
+            Graveyard(
+                gy_id,
+                pos,
+                spawn_radius,
+                capture_radius,
+                starting_owner=owner,
+                owner=owner,
+                capture_time_required=capture_time,
+            )
+        )
     for gy_id, pos in config.GRAVEYARDS_NORTH.items():
         spawn_radius = config.GY_CENTER_SPAWN_RADIUS if gy_id == "GY_CENTER" else config.GY_SPAWN_RADIUS
         capture_radius = config.GY_CENTER_CAPTURE_RADIUS if gy_id == "GY_CENTER" else config.GY_CAPTURE_RADIUS
-        graveyards.append(Graveyard(gy_id, pos, spawn_radius, capture_radius, "ENEMY" if gy_id != "GY_CENTER" else "NEUTRAL"))
+        capture_time = (
+            config.GY_CAPTURE_TIME_CENTER if gy_id == "GY_CENTER" else config.GY_CAPTURE_TIME_HOME_FORWARD
+        )
+        owner = "ENEMY" if gy_id != "GY_CENTER" else "NEUTRAL"
+        graveyards.append(
+            Graveyard(
+                gy_id,
+                pos,
+                spawn_radius,
+                capture_radius,
+                starting_owner=owner,
+                owner=owner,
+                capture_time_required=capture_time,
+            )
+        )
     return graveyards
 
 
