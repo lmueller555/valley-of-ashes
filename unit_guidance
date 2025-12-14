@@ -157,17 +157,9 @@ Capturing/destroying an enemy tower requires:
 
 Defeat all tower archers in that tower (tower becomes VULNERABLE).
 
-Maintain at least 1 allied unit (any non-archer unit: Grunt/Lieutenant/Cavalry; also captains/boss if they could enter, but they shouldn’t) inside TOWER_CAPTURE_RADIUS_PX for 180 seconds (3 minutes).
+Once VULNERABLE, a 180-second (3 minute) destruction timer begins automatically and counts down regardless of nearby units.
 
-Capture timer rules:
-
-If VULNERABLE and occupying faction has ≥1 unit in radius and no enemy units in radius → timer counts up.
-
-If both factions present → contested, timer pauses (does not reset).
-
-If no occupying units present → timer decays back toward 0 at 2× speed (so abandoning loses progress).
-
-When timer reaches 180s → tower becomes DESTROYED immediately (no ownership flip).
+When the timer completes → tower becomes DESTROYED immediately (no ownership flip).
 
 Permanent destruction rule:
 

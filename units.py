@@ -939,39 +939,15 @@ class Battlefield:
             if tower.state == "DESTROYED":
                 continue
 
-            # Count units in capture radius
-            enemy_counts = {"PLAYER": 0, "ENEMY": 0}
-            for unit in self.units.values():
-                if not unit.is_alive() or unit.unit_type == "TOWER_ARCHER":
-                    continue
-                dx = unit.pos[0] - tower.center[0]
-                dy = unit.pos[1] - tower.center[1]
-                dist2 = dx * dx + dy * dy
-                if dist2 <= config.TOWER_CONTEST_RADIUS_PX * config.TOWER_CONTEST_RADIUS_PX:
-                    enemy_counts[unit.faction] += 1
-
             owner = tower.faction_owner
-            attacker = self._enemy_faction(owner)
-            tower.contested = enemy_counts[owner] > 0 and enemy_counts[attacker] > 0
 
             if tower.state == "STANDING" and tower.archers_alive == 0:
                 tower.state = "VULNERABLE"
+                tower.occupy_timer = 0.0
 
             if tower.state == "VULNERABLE":
-                in_capture = 0
-                for unit in self.units.values():
-                    if not unit.is_alive() or unit.unit_type == "TOWER_ARCHER":
-                        continue
-                    dx = unit.pos[0] - tower.center[0]
-                    dy = unit.pos[1] - tower.center[1]
-                    dist2 = dx * dx + dy * dy
-                    if dist2 <= tower.capture_radius * tower.capture_radius and unit.faction == attacker:
-                        in_capture += 1
-
-                if in_capture > 0 and enemy_counts[owner] == 0:
-                    tower.occupy_timer += dt
-                elif tower.occupy_timer > 0 and in_capture == 0 and enemy_counts[owner] == 0:
-                    tower.occupy_timer = max(0.0, tower.occupy_timer - dt * config.TOWER_CAPTURE_DECAY_RATE)
+                tower.contested = False
+                tower.occupy_timer += dt
 
                 if tower.occupy_timer >= config.TOWER_CAPTURE_DURATION_S:
                     map_data.destroy_tower(tower)
