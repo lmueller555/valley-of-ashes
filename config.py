@@ -198,6 +198,14 @@ BULWARK_TAUNT_TARGETS = 3
 # Units can only respawn a limited number of times before being removed from the game.
 UNIT_MAX_RESPAWNS = 10
 
+UNIT_RESPAWNS = {
+    "GRUNT": UNIT_MAX_RESPAWNS,
+    "LIEUTENANT": UNIT_MAX_RESPAWNS,
+    "BULWARK": UNIT_MAX_RESPAWNS,
+    "CAVALRY": UNIT_MAX_RESPAWNS,
+    "HEALER": UNIT_MAX_RESPAWNS,
+}
+
 # Unit stats (from unit_guidance)
 UNIT_STATS = {
     "GRUNT": {
@@ -232,6 +240,7 @@ UNIT_STATS = {
         "respawn_delay_s": 20,
         "cost": 125,
         "gold_reward": 18,
+        "max_respawns": UNIT_RESPAWNS["BULWARK"],
     },
     "CAVALRY": {
         "max_hp": 55,
