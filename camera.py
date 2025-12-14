@@ -15,14 +15,14 @@ class Camera:
 
     def world_to_screen(self, pos):
         wx, wy = pos
-        sx = (wx - self.x) * self.zoom + config.MAP_VIEW_RECT.width / 2
-        sy = (wy - self.y) * self.zoom + config.MAP_VIEW_RECT.height / 2
+        sx = (wx - self.x) * self.zoom + config.MAP_VIEW_RECT.centerx
+        sy = (wy - self.y) * self.zoom + config.MAP_VIEW_RECT.centery
         return sx, sy
 
     def screen_to_world(self, pos):
         sx, sy = pos
-        wx = (sx - config.MAP_VIEW_RECT.width / 2) / self.zoom + self.x
-        wy = (sy - config.MAP_VIEW_RECT.height / 2) / self.zoom + self.y
+        wx = (sx - config.MAP_VIEW_RECT.centerx) / self.zoom + self.x
+        wy = (sy - config.MAP_VIEW_RECT.centery) / self.zoom + self.y
         return wx, wy
 
     def _clamp_to_bounds(self):
@@ -69,7 +69,7 @@ class Camera:
         if config.MAP_VIEW_RECT.collidepoint(*screen_pos):
             ax, ay = anchor_world
             sx, sy = screen_pos
-            self.x = ax - (sx - config.MAP_VIEW_RECT.width / 2) / self.zoom
-            self.y = ay - (sy - config.MAP_VIEW_RECT.height / 2) / self.zoom
+            self.x = ax - (sx - config.MAP_VIEW_RECT.centerx) / self.zoom
+            self.y = ay - (sy - config.MAP_VIEW_RECT.centery) / self.zoom
 
         self._clamp_to_bounds()

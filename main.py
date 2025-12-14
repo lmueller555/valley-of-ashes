@@ -165,19 +165,19 @@ def draw_spatial_grid(surface, camera: Camera, cell_size: float):
 def draw_ribbon(surface, font, battlefield: Battlefield):
     pygame.draw.rect(surface, config.COLOR_RIBBON, config.RIBBON_RECT)
     header = font.render("Valley of Ashes — Control Ribbon (placeholder)", True, config.COLOR_WHITE)
-    surface.blit(header, (20, config.MAP_VIEW_HEIGHT + 20))
+    surface.blit(header, (config.RIBBON_RECT.left + 20, config.RIBBON_RECT.top + 20))
 
     gold_text = font.render(
         f"Gold — Player: {battlefield.gold['PLAYER']}  Enemy: {battlefield.gold['ENEMY']}",
         True,
         config.COLOR_WHITE,
     )
-    surface.blit(gold_text, (20, config.MAP_VIEW_HEIGHT + 50))
+    surface.blit(gold_text, (config.RIBBON_RECT.left + 20, config.RIBBON_RECT.top + 50))
 
     sub = font.render(
         "Purchases, upgrades, and HUD will appear here per UI guidance.", True, (180, 180, 180)
     )
-    surface.blit(sub, (20, config.MAP_VIEW_HEIGHT + 80))
+    surface.blit(sub, (config.RIBBON_RECT.left + 20, config.RIBBON_RECT.top + 80))
 
 
 def draw_debug(surface, font, camera: Camera, geom, toggle, debug_state):
@@ -272,8 +272,9 @@ def handle_input(camera: Camera, dt, debug_state):
 
 def main():
     pygame.init()
-    config.apply_screen_resolution(config.SCREEN_WIDTH, config.SCREEN_HEIGHT)
-    screen = pygame.display.set_mode((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
+    display_info = pygame.display.Info()
+    config.apply_screen_resolution(display_info.current_w, display_info.current_h)
+    screen = pygame.display.set_mode((config.SCREEN_WIDTH, config.SCREEN_HEIGHT), pygame.FULLSCREEN)
     pygame.display.set_caption("Valley of Ashes")
     clock = pygame.time.Clock()
     font = pygame.font.Font(None, 20)
