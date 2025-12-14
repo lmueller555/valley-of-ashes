@@ -172,31 +172,33 @@ def is_inside_crossing(point: Tuple[float, float]) -> bool:
     return False
 
 
-def is_point_passable(point: Tuple[float, float], geom: MapGeometry) -> bool:
+def passability_status(point: Tuple[float, float], geom: MapGeometry) -> Tuple[bool, str]:
+    """Return whether a point is passable plus a human-readable reason."""
+
     px, py = point
 
-    # Cliff belts
-    if px < config.CLIFF_BELT_WIDTH or px > config.MAP_W - config.CLIFF_BELT_WIDTH:
-        return False
-
-    # Rift band except crossings
-    if config.RIFT_TOP <= py <= config.RIFT_BOTTOM and not is_inside_crossing(point):
-        return False
+    for rect in geom.impassable_rects:
+        if rect.collidepoint(px, py):
+            return False, "Impassable terrain"
 
     # Tower cores
     for tower in geom.towers:
         dx = px - tower.center[0]
         dy = py - tower.center[1]
         if dx * dx + dy * dy <= tower.core_radius * tower.core_radius:
-            return False
+            return False, f"Tower core ({tower.tower_id})"
 
     # Bunker walls
     for bunker in geom.bunkers:
         for wall in bunker.wall_rects:
             if wall.collidepoint(px, py):
-                return False
+                return False, f"Bunker wall ({bunker.bunker_id})"
 
-    return True
+    return True, "Passable"
+
+
+def is_point_passable(point: Tuple[float, float], geom: MapGeometry) -> bool:
+    return passability_status(point, geom)[0]
 
 
 def build_map_geometry() -> MapGeometry:
