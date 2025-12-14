@@ -509,5 +509,9 @@ class Battlefield:
                 continue
             sx, sy = camera.world_to_screen(unit.pos)
             color = config.COLOR_PLAYER if unit.faction == "PLAYER" else config.COLOR_ENEMY
-            pygame.draw.circle(surface, color, (int(sx), int(sy)), max(2, int(5 * camera.zoom)))
+            base_radius = {
+                "BOSS": 9,
+                "CAPTAIN": 7,
+            }.get(unit.unit_type, 5)
+            pygame.draw.circle(surface, color, (int(sx), int(sy)), max(2, int(base_radius * camera.zoom)))
 
