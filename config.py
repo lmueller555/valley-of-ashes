@@ -101,6 +101,9 @@ GRAVEYARDS_NORTH = {
 TOWER_CORE_IMPASSABLE_RADIUS_PX = 22
 TOWER_CAPTURE_RADIUS_PX = 120
 TOWER_CONTEST_RADIUS_PX = 140
+TOWER_CAPTURE_DURATION_S = 180.0
+TOWER_CAPTURE_DECAY_RATE = 2.0  # decay speed when empty
+ARCHERS_PER_TOWER = 6
 TOWER_POSITIONS_SOUTH = {
     "T_S_W_REAR": (950, 3300),
     "T_S_E_REAR": (2050, 3300),
@@ -125,6 +128,16 @@ N_BUNKER_RECT = pygame.Rect(S_BUNKER_RECT.x, mirror_y(S_BUNKER_RECT.bottom), S_B
 N_BUNKER_CENTER = (1500, mirror_y(S_BUNKER_CENTER[1]))
 N_BUNKER_APPROACH_SOUTH = (S_BUNKER_APPROACH_SOUTH[0], mirror_y(S_BUNKER_APPROACH_SOUTH[1]))
 N_BUNKER_APPROACH_NORTH = (S_BUNKER_APPROACH_NORTH[0], mirror_y(S_BUNKER_APPROACH_NORTH[1]))
+
+# Boss data
+BOSS_BASE_MAX_HP = 5000
+BOSS_BASE_DAMAGE = 60
+BOSS_ATTACK_RANGE = 40
+BOSS_AGGRO_RANGE = 320
+BOSS_ATTACK_COOLDOWN = 1.35
+BOSS_LEASH_RADIUS = 180
+BOSS_SPAWN = {"PLAYER": S_BOSS_SPAWN, "ENEMY": N_BOSS_SPAWN}
+BOSS_HP_PER_TOWER_MULT = 0.8
 
 # Starting resources
 STARTING_GOLD_PLAYER = 120
@@ -172,6 +185,39 @@ UNIT_STATS = {
         "respawn_delay_s": 20,
         "cost": 70,
         "gold_reward": 12,
+    },
+    "TOWER_ARCHER": {
+        "max_hp": 40,
+        "damage": 6,
+        "attack_range_px": 260,
+        "aggro_range_px": 300,
+        "attack_cooldown_s": 1.10,
+        "move_speed_px_s": 0,
+        "respawn_delay_s": 0,
+        "cost": 0,
+        "gold_reward": 5,
+    },
+    "CAPTAIN": {
+        "max_hp": 900,
+        "damage": 26,
+        "attack_range_px": 34,
+        "aggro_range_px": 220,
+        "attack_cooldown_s": 1.20,
+        "move_speed_px_s": 0,
+        "respawn_delay_s": 0,
+        "cost": 0,
+        "gold_reward": 75,
+    },
+    "BOSS": {
+        "max_hp": BOSS_BASE_MAX_HP,
+        "damage": BOSS_BASE_DAMAGE,
+        "attack_range_px": BOSS_ATTACK_RANGE,
+        "aggro_range_px": BOSS_AGGRO_RANGE,
+        "attack_cooldown_s": BOSS_ATTACK_COOLDOWN,
+        "move_speed_px_s": 0,
+        "respawn_delay_s": 0,
+        "cost": 0,
+        "gold_reward": 0,
     },
 }
 
