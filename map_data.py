@@ -76,12 +76,10 @@ def destroy_bunker(bunker: Bunker):
 def build_graveyards() -> List[Graveyard]:
     graveyards = []
     for gy_id, pos in config.GRAVEYARDS_SOUTH.items():
-        spawn_radius = config.GY_CENTER_SPAWN_RADIUS if gy_id == "GY_CENTER" else config.GY_SPAWN_RADIUS
-        capture_radius = config.GY_CENTER_CAPTURE_RADIUS if gy_id == "GY_CENTER" else config.GY_CAPTURE_RADIUS
-        capture_time = (
-            config.GY_CAPTURE_TIME_CENTER if gy_id == "GY_CENTER" else config.GY_CAPTURE_TIME_HOME_FORWARD
-        )
-        owner = "PLAYER" if gy_id != "GY_CENTER" else "NEUTRAL"
+        spawn_radius = config.GY_SPAWN_RADIUS
+        capture_radius = config.GY_CAPTURE_RADIUS
+        capture_time = config.GY_CAPTURE_TIME_HOME_FORWARD
+        owner = "PLAYER"
         graveyards.append(
             Graveyard(
                 gy_id,
@@ -94,12 +92,10 @@ def build_graveyards() -> List[Graveyard]:
             )
         )
     for gy_id, pos in config.GRAVEYARDS_NORTH.items():
-        spawn_radius = config.GY_CENTER_SPAWN_RADIUS if gy_id == "GY_CENTER" else config.GY_SPAWN_RADIUS
-        capture_radius = config.GY_CENTER_CAPTURE_RADIUS if gy_id == "GY_CENTER" else config.GY_CAPTURE_RADIUS
-        capture_time = (
-            config.GY_CAPTURE_TIME_CENTER if gy_id == "GY_CENTER" else config.GY_CAPTURE_TIME_HOME_FORWARD
-        )
-        owner = "ENEMY" if gy_id != "GY_CENTER" else "NEUTRAL"
+        spawn_radius = config.GY_SPAWN_RADIUS
+        capture_radius = config.GY_CAPTURE_RADIUS
+        capture_time = config.GY_CAPTURE_TIME_HOME_FORWARD
+        owner = "ENEMY"
         graveyards.append(
             Graveyard(
                 gy_id,

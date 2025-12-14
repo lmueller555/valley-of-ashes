@@ -264,19 +264,15 @@ GY_S_WEST_FORWARD: (750, 2720)
 
 GY_S_EAST_FORWARD: (2250, 2720)
 
-GY_CENTER (neutral): (1500, 2100)
-
 Constants:
 
-GY_SPAWN_RADIUS = 80 (center uses 90)
+GY_SPAWN_RADIUS = 80
 
-GY_CAPTURE_RADIUS = 220 (center uses 260)
+GY_CAPTURE_RADIUS = 220
 
 Capture times:
 
 home/forward: 12s
-
-center: 16s
 
 8.3 North Graveyards (Auto-Mirror)
 
@@ -287,8 +283,6 @@ GY_N_HOME = (1500, mirror_y(3400)) = (1500, 800)
 GY_N_WEST_FORWARD = (750, mirror_y(2720)) = (750, 1480)
 
 GY_N_EAST_FORWARD = (2250, 1480)
-
-GY_CENTER already at midline (unchanged)
 
 Capture rules are unchanged from the previous version.
 
