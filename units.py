@@ -764,16 +764,6 @@ class Battlefield:
         self._process_respawns(dt)
         self._update_tower_states(dt)
         self._update_graveyards(dt)
-        self._auto_train_player_lieutenants()
-
-    def _auto_train_player_lieutenants(self):
-        if self.game_over:
-            return
-
-        cost = config.UNIT_STATS["LIEUTENANT"]["cost"]
-        while self.gold.get("PLAYER", 0) >= cost:
-            # Lane selection handled inside purchase_unit
-            self.purchase_unit("PLAYER", "LIEUTENANT")
 
     def draw(self, surface, camera):
         for unit in self.units.values():
