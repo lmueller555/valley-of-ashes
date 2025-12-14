@@ -11,21 +11,34 @@ def world_rect_to_screen(camera: Camera, rect: pygame.Rect) -> pygame.Rect:
     return pygame.Rect(sx, sy, rect.width * camera.zoom, rect.height * camera.zoom)
 
 
-def draw_bunker(surface, camera: Camera, bunker: map_data.Bunker, is_north: bool):
+def draw_bunker(surface, camera: Camera, bunker: map_data.Bunker):
     courtyard_color = (70, 70, 80)
     wall_color = (120, 90, 70)
+    rubble_color = config.COLOR_DESTROYED
     rect_screen = world_rect_to_screen(camera, bunker.rect)
     pygame.draw.rect(surface, courtyard_color, rect_screen)
-    for wall in bunker.wall_rects:
-        pygame.draw.rect(surface, wall_color, world_rect_to_screen(camera, wall))
+    if bunker.state != "DESTROYED":
+        for wall in bunker.wall_rects:
+            pygame.draw.rect(surface, wall_color, world_rect_to_screen(camera, wall))
+    else:
+        pygame.draw.rect(surface, rubble_color, rect_screen, width=2)
 
 
-def draw_tower(surface, camera: Camera, tower_center, color):
-    sx, sy = camera.world_to_screen(tower_center)
+def draw_tower(surface, camera: Camera, tower: map_data.Tower):
+    sx, sy = camera.world_to_screen(tower.center)
     core_radius = max(2, int(config.TOWER_CORE_IMPASSABLE_RADIUS_PX * camera.zoom))
     capture_radius = max(core_radius + 4, int(config.TOWER_CAPTURE_RADIUS_PX * camera.zoom))
+
+    if tower.state == "DESTROYED":
+        pygame.draw.circle(surface, config.COLOR_DESTROYED, (sx, sy), capture_radius // 2)
+        pygame.draw.circle(surface, config.COLOR_DESTROYED, (sx, sy), capture_radius, width=1)
+        return
+
+    tower_color = config.COLOR_PLAYER if tower.faction_owner == "PLAYER" else config.COLOR_ENEMY
     pygame.draw.circle(surface, config.COLOR_TOWER, (sx, sy), core_radius)
-    pygame.draw.circle(surface, color, (sx, sy), capture_radius, width=1)
+    pygame.draw.circle(surface, tower_color, (sx, sy), capture_radius, width=1)
+    if tower.state == "VULNERABLE":
+        pygame.draw.circle(surface, config.COLOR_NEUTRAL, (sx, sy), capture_radius + 6, width=1)
 
 
 def draw_graveyard(surface, camera: Camera, pos, owner_color):
@@ -74,12 +87,11 @@ def draw_map(surface, camera: Camera, geom):
 
     # Towers
     for tower in geom.towers:
-        color = config.COLOR_PLAYER if tower.faction_owner == "PLAYER" else config.COLOR_ENEMY
-        draw_tower(surface, camera, tower.center, color)
+        draw_tower(surface, camera, tower)
 
     # Bunkers
     for bunker in geom.bunkers:
-        draw_bunker(surface, camera, bunker, bunker.faction_owner == "ENEMY")
+        draw_bunker(surface, camera, bunker)
 
     # Graveyards
     for gy in geom.graveyards:
@@ -106,13 +118,15 @@ def draw_impassable_overlay(surface, camera: Camera, geom):
         overlay.fill((0, 0, 0, 0), world_rect_to_screen(camera, pygame.Rect(x0, y0, x1 - x0, y1 - y0)))
 
     for bunker in geom.bunkers:
-        for wall in bunker.wall_rects:
-            overlay.fill(shade, world_rect_to_screen(camera, wall))
+        if bunker.state != "DESTROYED":
+            for wall in bunker.wall_rects:
+                overlay.fill(shade, world_rect_to_screen(camera, wall))
 
     for tower in geom.towers:
-        sx, sy = camera.world_to_screen(tower.center)
-        radius = max(1, int(tower.core_radius * camera.zoom))
-        pygame.draw.circle(overlay, shade, (int(sx), int(sy)), radius)
+        if tower.state != "DESTROYED":
+            sx, sy = camera.world_to_screen(tower.center)
+            radius = max(1, int(tower.core_radius * camera.zoom))
+            pygame.draw.circle(overlay, shade, (int(sx), int(sy)), radius)
 
     surface.blit(overlay, (0, 0))
 
@@ -131,6 +145,8 @@ def draw_debug(surface, font, camera: Camera, geom, toggle, debug_state):
     mx, my = pygame.mouse.get_pos()
     cursor_world = camera.screen_to_world((mx, my))
     passable = map_data.is_point_passable(cursor_world, geom)
+    tower_states = ", ".join([f"{t.tower_id}:{t.state[:3]}" for t in geom.towers])
+    bunker_states = ", ".join([f"{b.bunker_id}:{b.state[:3]}" for b in geom.bunkers])
     lines = [
         f"Camera: ({camera.x:.1f}, {camera.y:.1f})",
         f"Zoom: {camera.zoom:.2f}",
@@ -140,7 +156,9 @@ def draw_debug(surface, font, camera: Camera, geom, toggle, debug_state):
         "F2: toggle impassable overlay",
         "SPACE: center on home graveyard",
         f"Towers: {len(geom.towers)} (capture r={config.TOWER_CAPTURE_RADIUS_PX})",
+        f"Tower states: {tower_states}",
         f"Bunkers: {len(geom.bunkers)}",
+        f"Bunker states: {bunker_states}",
         f"Graveyards: {len(geom.graveyards)}",
         f"Impassable overlay: {'ON' if debug_state.get('show_impassable') else 'OFF'}",
     ]
@@ -180,9 +198,8 @@ def handle_input(camera: Camera, dt, debug_state):
 
 def main():
     pygame.init()
-    display_info = pygame.display.Info()
-    config.apply_screen_resolution(display_info.current_w, display_info.current_h)
-    screen = pygame.display.set_mode((config.SCREEN_WIDTH, config.SCREEN_HEIGHT), pygame.FULLSCREEN)
+    config.apply_screen_resolution(config.SCREEN_WIDTH, config.SCREEN_HEIGHT)
+    screen = pygame.display.set_mode((config.SCREEN_WIDTH, config.SCREEN_HEIGHT))
     pygame.display.set_caption("Valley of Ashes")
     clock = pygame.time.Clock()
     font = pygame.font.Font(None, 20)
@@ -209,8 +226,9 @@ def main():
                     camera.center_on(config.GRAVEYARDS_SOUTH["GY_S_HOME"])
             elif event.type == pygame.MOUSEWHEEL:
                 mx, my = pygame.mouse.get_pos()
-                zoom_factor = 1.1 if event.y > 0 else 0.9
-                camera.zoom_at((mx, my), zoom_factor)
+                if config.MAP_VIEW_RECT.collidepoint(mx, my):
+                    zoom_factor = 1.1 if event.y > 0 else 0.9
+                    camera.zoom_at((mx, my), zoom_factor)
         handle_input(camera, dt, state_cache)
 
         screen.fill(config.COLOR_BG)

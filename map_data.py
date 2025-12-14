@@ -50,6 +50,23 @@ class MapGeometry:
     impassable_rects: List[pygame.Rect] = field(default_factory=list)
 
 
+def destroy_tower(tower: Tower):
+    """Mark a tower destroyed and clear capture state."""
+
+    tower.state = "DESTROYED"
+    tower.archers_alive = 0
+    tower.occupy_timer = 0.0
+    tower.contested = False
+
+
+def destroy_bunker(bunker: Bunker):
+    """Mark a bunker destroyed and remove its blocking walls."""
+
+    bunker.state = "DESTROYED"
+    bunker.captain_alive = False
+    bunker.wall_rects = []
+
+
 def build_graveyards() -> List[Graveyard]:
     graveyards = []
     for gy_id, pos in config.GRAVEYARDS_SOUTH.items():
@@ -183,8 +200,10 @@ def is_point_passable(point: Tuple[float, float], geom: MapGeometry) -> bool:
     if config.RIFT_TOP <= py <= config.RIFT_BOTTOM and not is_inside_crossing(point):
         return False
 
-    # Tower cores
+    # Tower cores (standing or vulnerable only)
     for tower in geom.towers:
+        if tower.state == "DESTROYED":
+            continue
         dx = px - tower.center[0]
         dy = py - tower.center[1]
         if dx * dx + dy * dy <= tower.core_radius * tower.core_radius:
@@ -192,9 +211,10 @@ def is_point_passable(point: Tuple[float, float], geom: MapGeometry) -> bool:
 
     # Bunker walls
     for bunker in geom.bunkers:
-        for wall in bunker.wall_rects:
-            if wall.collidepoint(px, py):
-                return False
+        if bunker.state != "DESTROYED":
+            for wall in bunker.wall_rects:
+                if wall.collidepoint(px, py):
+                    return False
 
     return True
 
