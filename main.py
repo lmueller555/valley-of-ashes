@@ -51,7 +51,14 @@ def draw_tower(surface, camera: Camera, tower: map_data.Tower, show_capture_mete
     pygame.draw.circle(surface, config.COLOR_TOWER, (sx, sy), core_radius)
     pygame.draw.circle(surface, tower_color, (sx, sy), capture_radius, width=1)
     if tower.state == "VULNERABLE":
-        pygame.draw.circle(surface, config.COLOR_NEUTRAL, (sx, sy), capture_radius + 6, width=1)
+        ring_radius = capture_radius + 6
+        remaining_ratio = max(0.0, (config.TOWER_CAPTURE_DURATION_S - tower.occupy_timer) / config.TOWER_CAPTURE_DURATION_S)
+        if remaining_ratio > 0:
+            ring_diameter = ring_radius * 2
+            ring_rect = pygame.Rect(sx - ring_radius, sy - ring_radius, ring_diameter, ring_diameter)
+            start_angle = -math.pi / 2
+            end_angle = start_angle + remaining_ratio * 2 * math.pi
+            pygame.draw.arc(surface, config.COLOR_NEUTRAL, ring_rect, start_angle, end_angle, width=2)
         if show_capture_meter:
             ratio = min(1.0, tower.occupy_timer / config.TOWER_CAPTURE_DURATION_S)
             bar_w = max(28, int(60 * camera.zoom))
