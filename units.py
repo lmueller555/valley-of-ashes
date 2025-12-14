@@ -160,7 +160,11 @@ class Battlefield:
     def spawn_unit(self, faction: str, unit_type: str, lane: str, pos: Optional[Tuple[float, float]] = None) -> Unit:
         stats = config.UNIT_STATS[unit_type]
         if pos is None:
-            pos = self.player_home if faction == "PLAYER" else self.enemy_home
+            if lane in config.LANE_WAYPOINTS:
+                waypoints = self._lane_waypoints(faction, lane)
+                pos = waypoints[0]
+            else:
+                pos = self.player_home if faction == "PLAYER" else self.enemy_home
         uid = self._alloc_id()
         unit = Unit(
             unit_id=uid,
