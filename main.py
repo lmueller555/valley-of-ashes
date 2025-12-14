@@ -59,6 +59,29 @@ def draw_graveyard(surface, camera: Camera, pos, owner_color):
     pygame.draw.circle(surface, config.COLOR_WHITE, (sx, sy), max(4, int(10 * camera.zoom)), width=1)
 
 
+def draw_graveyard_status(surface, camera: Camera, font, graveyard: map_data.Graveyard):
+    sx, sy = camera.world_to_screen(graveyard.pos)
+    bar_width = 80
+    bar_height = 8
+    bar_x = sx - bar_width // 2
+    bar_y = sy - 24
+    ratio = 0.0 if graveyard.respawn_interval <= 0 else min(1.0, graveyard.respawn_timer / graveyard.respawn_interval)
+    base_color = (30, 30, 34)
+    owner_color = (
+        config.COLOR_PLAYER if graveyard.owner == "PLAYER" else config.COLOR_ENEMY if graveyard.owner == "ENEMY" else config.COLOR_NEUTRAL
+    )
+
+    pygame.draw.rect(surface, base_color, (bar_x, bar_y, bar_width, bar_height))
+    fill_width = int(bar_width * ratio)
+    if fill_width > 0:
+        pygame.draw.rect(surface, owner_color, (bar_x, bar_y, fill_width, bar_height))
+    pygame.draw.rect(surface, config.COLOR_WHITE, (bar_x, bar_y, bar_width, bar_height), width=1)
+
+    waiting_text = font.render(f"{len(graveyard.waiting_units)} waiting", True, config.COLOR_WHITE)
+    text_rect = waiting_text.get_rect(center=(sx, bar_y - 8))
+    surface.blit(waiting_text, text_rect)
+
+
 def draw_lane(surface, camera: Camera, points):
     if len(points) < 2:
         return
@@ -242,7 +265,8 @@ def draw_debug(surface, font, camera: Camera, geom, toggle, debug_state):
     gy_details = []
     for gy in geom.graveyards:
         gy_details.append(
-            f"{gy.gy_id}:{gy.owner[0]} timer {gy.capture_timer:04.1f}/{gy.capture_time_required:.0f}"
+            f"{gy.gy_id}:{gy.owner[0]} cap {gy.capture_timer:04.1f}/{gy.capture_time_required:.0f} "
+            f"resp {gy.respawn_timer:04.1f}/{gy.respawn_interval:.0f} q={len(gy.waiting_units)}"
         )
     battlefield: Battlefield = debug_state.get("battlefield")
     unit_counts = {"PLAYER": 0, "ENEMY": 0}
@@ -252,7 +276,7 @@ def draw_debug(surface, font, camera: Camera, geom, toggle, debug_state):
         for u in battlefield.units.values():
             if u.is_alive():
                 unit_counts[u.faction] += 1
-        respawns = len(battlefield.respawn_queue)
+        respawns = sum(len(gy.waiting_units) for gy in geom.graveyards)
         for faction, bid in battlefield.boss_units.items():
             boss = battlefield.units.get(bid)
             if boss:
@@ -386,6 +410,8 @@ def main():
         screen.fill(config.COLOR_BG)
         draw_map(screen, camera, geom)
         battlefield.draw(screen, camera)
+        for gy in geom.graveyards:
+            draw_graveyard_status(screen, camera, font, gy)
         if state_cache.get("show_impassable"):
             draw_impassable_overlay(screen, camera, geom)
         if state_cache.get("show_spatial_grid"):
