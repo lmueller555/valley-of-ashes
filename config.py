@@ -53,6 +53,10 @@ X_W = 750
 X_C = 1500
 X_E = 2250
 
+# Pathing safeguards
+LANE_PROXIMITY_THRESHOLD_PX = LANE_WIDTH * 0.5
+STUCK_LANE_TIMEOUT_S = 10.0
+
 # Crossing rectangles (x0, y0, x1, y1)
 CROSSINGS = [
     (540, RIFT_TOP, 960, RIFT_BOTTOM),
