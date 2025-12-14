@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 import pygame
 
@@ -17,8 +17,8 @@ class Graveyard:
     capture_timer: float = 0.0
     capture_time_required: float = 12.0
     respawn_timer: float = 0.0
-    respawn_interval: float = config.GY_RESPAWN_INTERVAL
-    waiting_units: List[int] = field(default_factory=list)
+    respawn_interval: float = 0.0
+    waiting_units: List[Dict[str, float]] = field(default_factory=list)
 
 
 @dataclass

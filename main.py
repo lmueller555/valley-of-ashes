@@ -76,7 +76,9 @@ def draw_graveyard_status(surface, camera: Camera, font, graveyard: map_data.Gra
     bar_height = 8
     bar_x = sx - bar_width // 2
     bar_y = sy - 24
-    ratio = 0.0 if graveyard.respawn_interval <= 0 else min(1.0, graveyard.respawn_timer / graveyard.respawn_interval)
+    ratio = 0.0
+    if graveyard.respawn_interval > 0:
+        ratio = min(1.0, graveyard.respawn_timer / graveyard.respawn_interval)
     base_color = (30, 30, 34)
     owner_color = (
         config.COLOR_PLAYER if graveyard.owner == "PLAYER" else config.COLOR_ENEMY if graveyard.owner == "ENEMY" else config.COLOR_NEUTRAL

@@ -425,7 +425,14 @@ class Battlefield:
             gy = self._nearest_graveyard(unit.faction, unit.pos)
             if gy is not None:
                 unit.state = "RESPAWNING"
-                gy.waiting_units.append(unit.unit_id)
+                gy.waiting_units.append(
+                    {
+                        "unit_id": unit.unit_id,
+                        "remaining": unit.respawn_delay_s,
+                        "delay": unit.respawn_delay_s,
+                    }
+                )
+                self._update_graveyard_respawn_progress(gy)
             else:
                 unit.state = "DEAD"
         else:
@@ -597,29 +604,48 @@ class Battlefield:
         unit.out_of_combat_time_s = 0.0
         unit.regen_timer_s = 0.0
 
+    def _update_graveyard_respawn_progress(self, gy: map_data.Graveyard):
+        if not gy.waiting_units:
+            gy.respawn_timer = 0.0
+            gy.respawn_interval = 0.0
+            return
+
+        next_entry = min(gy.waiting_units, key=lambda e: e["remaining"])
+        gy.respawn_interval = next_entry["delay"]
+        gy.respawn_timer = max(0.0, next_entry["delay"] - next_entry["remaining"])
+
     def _process_respawns(self, dt: float):
         for gy in self.geom.graveyards:
-            gy.respawn_timer += dt
-            if gy.respawn_timer < gy.respawn_interval:
+            if not gy.waiting_units:
+                self._update_graveyard_respawn_progress(gy)
                 continue
-            queued_units = list(gy.waiting_units)
-            gy.waiting_units.clear()
-            gy.respawn_timer = 0.0
-            for uid in queued_units:
-                unit = self.units.get(uid)
+
+            remaining_queue = []
+            for entry in gy.waiting_units:
+                entry["remaining"] -= dt
+                if entry["remaining"] > 0:
+                    remaining_queue.append(entry)
+                    continue
+
+                unit = self.units.get(entry["unit_id"])
                 if unit is None or not unit.respawns:
                     continue
                 if unit.remaining_respawns <= 0:
                     unit.state = "DEAD"
                     unit.remaining_respawns = 0
                     continue
+
                 target_gy = gy if gy.owner == unit.faction else self._nearest_graveyard(unit.faction, gy.pos)
                 if target_gy is None:
                     unit.state = "DEAD"
                     continue
+
                 unit.remaining_respawns -= 1
                 self._respawn_unit_at_graveyard(unit, target_gy)
                 self._reset_waypoint_progress(unit)
+
+            gy.waiting_units = remaining_queue
+            self._update_graveyard_respawn_progress(gy)
 
     def _update_tower_states(self, dt: float):
         for tower in self.geom.towers:
