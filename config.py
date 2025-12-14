@@ -156,6 +156,8 @@ BOSS_ATTACK_COOLDOWN = 1.35
 BOSS_LEASH_RADIUS = 180
 BOSS_SPAWN = {"PLAYER": S_BOSS_SPAWN, "ENEMY": N_BOSS_SPAWN}
 BOSS_HP_PER_TOWER_MULT = 0.8
+COMMANDER_BASE_MAX_HP = BOSS_BASE_MAX_HP * 0.5
+COMMANDER_BASE_DAMAGE = BOSS_BASE_DAMAGE * 0.5
 
 # Starting resources
 STARTING_GOLD_PLAYER = 120
@@ -289,6 +291,17 @@ UNIT_STATS = {
     "BOSS": {
         "max_hp": BOSS_BASE_MAX_HP,
         "damage": BOSS_BASE_DAMAGE,
+        "attack_range_px": BOSS_ATTACK_RANGE,
+        "aggro_range_px": BOSS_AGGRO_RANGE,
+        "attack_cooldown_s": BOSS_ATTACK_COOLDOWN,
+        "move_speed_px_s": 0,
+        "respawn_delay_s": 0,
+        "cost": 0,
+        "gold_reward": 0,
+    },
+    "COMMANDER": {
+        "max_hp": COMMANDER_BASE_MAX_HP,
+        "damage": COMMANDER_BASE_DAMAGE,
         "attack_range_px": BOSS_ATTACK_RANGE,
         "aggro_range_px": BOSS_AGGRO_RANGE,
         "attack_cooldown_s": BOSS_ATTACK_COOLDOWN,

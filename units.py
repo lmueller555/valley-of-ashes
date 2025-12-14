@@ -86,6 +86,7 @@ class Battlefield:
         self.time_s = 0.0
 
         self.boss_units: Dict[str, UnitId] = {}
+        self.commanders_by_tower: Dict[str, UnitId] = {}
 
         self.gold: Dict[str, int] = {
             "PLAYER": config.STARTING_GOLD_PLAYER,
@@ -147,10 +148,43 @@ class Battlefield:
             boss.base_max_hp = config.BOSS_BASE_MAX_HP
             boss.base_damage = config.BOSS_BASE_DAMAGE
             self.boss_units[faction] = boss.unit_id
+        self._spawn_commanders()
         self._update_boss_scaling("PLAYER")
         self._update_boss_scaling("ENEMY")
 
         self.ai_controller = None
+
+    def _commander_positions(self, faction: str) -> List[Tuple[float, float]]:
+        keep = config.S_KEEP_RECT if faction == "PLAYER" else config.N_KEEP_RECT
+        cx, cy = keep.center
+        offsets = [(-80, -40), (80, -40), (-80, 40), (80, 40)]
+        return [(cx + dx, cy + dy) for dx, dy in offsets]
+
+    def _spawn_commanders_for_faction(self, faction: str):
+        positions = self._commander_positions(faction)
+        available_positions = iter(positions)
+        for tower in sorted(
+            (t for t in self.geom.towers if t.faction_owner == faction and t.state != "DESTROYED"),
+            key=lambda t: t.tower_id,
+        ):
+            try:
+                pos = next(available_positions)
+            except StopIteration:
+                break
+            commander = self.spawn_unit(faction, "COMMANDER", lane="NONE", pos=pos)
+            commander.state = "DEFENDING"
+            commander.leash_anchor = pos
+            commander.leash_radius_px = config.BOSS_LEASH_RADIUS
+            commander.respawns = False
+            commander.remaining_respawns = 0
+            commander.structure_id = tower.tower_id
+            commander.base_max_hp = config.COMMANDER_BASE_MAX_HP
+            commander.base_damage = config.COMMANDER_BASE_DAMAGE
+            self.commanders_by_tower[tower.tower_id] = commander.unit_id
+
+    def _spawn_commanders(self):
+        self._spawn_commanders_for_faction("PLAYER")
+        self._spawn_commanders_for_faction("ENEMY")
 
     def _lane_waypoints(self, faction: str, lane: str) -> List[Tuple[float, float]]:
         pts = config.LANE_WAYPOINTS[lane]
@@ -273,6 +307,27 @@ class Battlefield:
         boss.max_hp = boss.base_max_hp * mult if boss.base_max_hp else boss.max_hp
         boss.damage = boss.base_damage * mult if boss.base_damage else boss.damage
         boss.hp = max(1, min(boss.max_hp, ratio * boss.max_hp))
+        self._update_commander_scaling(faction, mult)
+
+    def _update_commander_scaling(self, faction: str, mult: float):
+        for tower_id, commander_id in self.commanders_by_tower.items():
+            commander = self.units.get(commander_id)
+            if commander is None or commander.faction != faction or not commander.is_alive():
+                continue
+            old_max = commander.max_hp
+            ratio = commander.hp / old_max if old_max > 0 else 1.0
+            commander.max_hp = commander.base_max_hp * mult if commander.base_max_hp else commander.max_hp
+            commander.damage = commander.base_damage * mult if commander.base_damage else commander.damage
+            commander.hp = max(1, min(commander.max_hp, ratio * commander.max_hp))
+
+    def _kill_commander_for_tower(self, tower_id: str):
+        commander_id = self.commanders_by_tower.pop(tower_id, None)
+        if commander_id is None:
+            return
+        commander = self.units.get(commander_id)
+        if commander is not None and commander.is_alive():
+            commander.hp = 0
+            self._on_unit_death(commander)
 
     def _is_near_lane(self, pos: Tuple[float, float]) -> bool:
         lane_centers = (config.X_W, config.X_C, config.X_E)
@@ -407,6 +462,47 @@ class Battlefield:
         if self._friendly_bunker_bonus(unit):
             cooldown *= 0.8
         return cooldown
+
+    def _coordinate_commander_targets(self):
+        for faction, boss_id in self.boss_units.items():
+            boss = self.units.get(boss_id)
+            if boss is None or not boss.is_alive():
+                continue
+
+            attackers = [
+                unit
+                for unit in self.units.values()
+                if unit.is_alive() and unit.faction != faction and unit.target_id == boss.unit_id
+            ]
+            if not attackers:
+                continue
+
+            commanders = [
+                unit
+                for cid in self.commanders_by_tower.values()
+                for unit in (self.units.get(cid),)
+                if unit is not None and unit.is_alive() and unit.faction == faction
+            ]
+            assigned: set[int] = set()
+
+            for commander in sorted(commanders, key=lambda u: u.unit_id):
+                candidates = [a for a in attackers if a.unit_id not in assigned] or attackers
+                in_range = []
+                cx, cy = commander.pos
+                for attacker in candidates:
+                    ax, ay = attacker.pos
+                    dx = ax - cx
+                    dy = ay - cy
+                    dist2 = dx * dx + dy * dy
+                    if dist2 <= commander.aggro_range_px * commander.aggro_range_px:
+                        in_range.append((dist2, attacker))
+
+                if not in_range:
+                    continue
+
+                _, chosen = min(in_range, key=lambda pair: (pair[0], pair[1].unit_id))
+                commander.target_id = chosen.unit_id
+                assigned.add(chosen.unit_id)
 
     def _select_target(self, unit: Unit) -> Optional[UnitId]:
         candidates = self.spatial.query_radius(unit.pos, unit.aggro_range_px)
@@ -565,6 +661,8 @@ class Battlefield:
             ally = self.units.get(cid)
             if ally is None or not ally.is_alive() or ally.faction != unit.faction:
                 continue
+            if ally.unit_type in {"BOSS", "COMMANDER"}:
+                continue
             if ally.hp >= ally.max_hp:
                 continue
             heal_amount = ally.max_hp * config.HEALER_HEAL_PERCENT
@@ -584,6 +682,8 @@ class Battlefield:
                 continue
             enemy = self.units.get(cid)
             if enemy is None or not enemy.is_alive() or enemy.faction == unit.faction:
+                continue
+            if enemy.unit_type in {"BOSS", "COMMANDER"}:
                 continue
             dx = enemy.pos[0] - ux
             dy = enemy.pos[1] - uy
@@ -766,6 +866,7 @@ class Battlefield:
 
                 if tower.occupy_timer >= config.TOWER_CAPTURE_DURATION_S:
                     map_data.destroy_tower(tower)
+                    self._kill_commander_for_tower(tower.tower_id)
                     self._update_boss_scaling(owner)
 
     def _update_graveyards(self, dt: float):
@@ -803,6 +904,7 @@ class Battlefield:
             return
 
         self._update_spatial()
+        self._coordinate_commander_targets()
         for unit in self.units.values():
             self._update_unit(unit, dt)
         self._apply_separation(dt)
