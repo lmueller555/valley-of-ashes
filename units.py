@@ -563,7 +563,7 @@ class Battlefield:
             elite_target = self._select_elite_target(unit, elite_zone[0])
             if elite_target is not None:
                 unit.target_id = elite_target
-        elif unit.target_id is None:
+        if unit.target_id is None:
             unit.target_id = self._select_target(unit)
 
         if unit.target_id is not None:
