@@ -24,7 +24,7 @@ class Tower:
     core_radius: float = config.TOWER_CORE_IMPASSABLE_RADIUS_PX
     capture_radius: float = config.TOWER_CAPTURE_RADIUS_PX
     state: str = "STANDING"
-    archers_alive: int = 6
+    archers_alive: int = config.ARCHERS_PER_TOWER
     occupy_timer: float = 0.0
     contested: bool = False
 

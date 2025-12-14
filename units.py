@@ -1,7 +1,6 @@
+import math
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
-
-import math
 
 import pygame
 
@@ -34,6 +33,10 @@ class Unit:
     last_hit_by_faction: Optional[str] = None
     respawn_delay_s: float = 0.0
     gold_reward: int = 0
+    respawns: bool = True
+    structure_id: Optional[str] = None  # tower/bunker association for defenders
+    base_max_hp: Optional[float] = None  # used for boss scaling
+    base_damage: Optional[float] = None
 
     def is_alive(self) -> bool:
         return self.state not in {"DEAD", "RESPAWNING"}
@@ -76,6 +79,8 @@ class Battlefield:
         self.spatial = SpatialHash()
         self.time_s = 0.0
 
+        self.boss_units: Dict[str, UnitId] = {}
+
         self.gold: Dict[str, int] = {
             "PLAYER": config.STARTING_GOLD_PLAYER,
             "ENEMY": config.STARTING_GOLD_ENEMY,
@@ -85,10 +90,52 @@ class Battlefield:
         self.player_home = config.GRAVEYARDS_SOUTH["GY_S_HOME"]
         self.enemy_home = config.GRAVEYARDS_NORTH["GY_N_HOME"]
 
+        self._spawn_defenders()
+
     def _alloc_id(self) -> UnitId:
         uid = self.next_unit_id
         self.next_unit_id += 1
         return uid
+
+    def _enemy_faction(self, faction: str) -> str:
+        return "ENEMY" if faction == "PLAYER" else "PLAYER"
+
+    def _spawn_defenders(self):
+        """Spawn archers, captains, and bosses defined in guidance."""
+
+        # Tower archers
+        archer_offsets = [(-18, -10), (18, -10), (-18, 10), (18, 10), (0, -18), (0, 18)]
+        for tower in self.geom.towers:
+            for dx, dy in archer_offsets:
+                pos = (tower.center[0] + dx, tower.center[1] + dy)
+                archer = self.spawn_unit(tower.faction_owner, "TOWER_ARCHER", lane="NONE", pos=pos)
+                archer.state = "DEFENDING"
+                archer.leash_anchor = tower.center
+                archer.leash_radius_px = config.TOWER_CAPTURE_RADIUS_PX
+                archer.respawns = False
+                archer.structure_id = tower.tower_id
+
+        # Captains
+        for bunker in self.geom.bunkers:
+            captain = self.spawn_unit(bunker.faction_owner, "CAPTAIN", lane="NONE", pos=bunker.center)
+            captain.state = "DEFENDING"
+            captain.leash_anchor = bunker.center
+            captain.leash_radius_px = 120
+            captain.respawns = False
+            captain.structure_id = bunker.bunker_id
+
+        # Bosses with scaling
+        for faction, spawn in config.BOSS_SPAWN.items():
+            boss = self.spawn_unit(faction, "BOSS", lane="NONE", pos=spawn)
+            boss.state = "DEFENDING"
+            boss.leash_anchor = spawn
+            boss.leash_radius_px = config.BOSS_LEASH_RADIUS
+            boss.respawns = False
+            boss.base_max_hp = config.BOSS_BASE_MAX_HP
+            boss.base_damage = config.BOSS_BASE_DAMAGE
+            self.boss_units[faction] = boss.unit_id
+        self._update_boss_scaling("PLAYER")
+        self._update_boss_scaling("ENEMY")
 
     def _lane_waypoints(self, faction: str, lane: str) -> List[Tuple[float, float]]:
         pts = config.LANE_WAYPOINTS[lane]
@@ -153,6 +200,22 @@ class Battlefield:
             if unit.is_alive():
                 self.spatial.insert(unit)
 
+    def _update_boss_scaling(self, faction: str):
+        boss_id = self.boss_units.get(faction)
+        if boss_id is None:
+            return
+        boss = self.units.get(boss_id)
+        if boss is None:
+            return
+
+        standing = sum(1 for t in self.geom.towers if t.faction_owner == faction and t.state != "DESTROYED")
+        mult = 1.0 + config.BOSS_HP_PER_TOWER_MULT * standing
+        old_max = boss.max_hp
+        ratio = boss.hp / old_max if old_max > 0 else 1.0
+        boss.max_hp = boss.base_max_hp * mult if boss.base_max_hp else boss.max_hp
+        boss.damage = boss.base_damage * mult if boss.base_damage else boss.damage
+        boss.hp = max(1, min(boss.max_hp, ratio * boss.max_hp))
+
     def _apply_separation(self, dt: float):
         for unit in self.units.values():
             if not unit.is_alive() or unit.move_speed_px_s <= 0:
@@ -216,8 +279,26 @@ class Battlefield:
         if unit.state in {"DEAD", "RESPAWNING"}:
             return
 
-        unit.state = "RESPAWNING"
-        self.respawn_queue.append((self.time_s + unit.respawn_delay_s, unit.unit_id))
+        if unit.respawns and unit.respawn_delay_s > 0:
+            unit.state = "RESPAWNING"
+            self.respawn_queue.append((self.time_s + unit.respawn_delay_s, unit.unit_id))
+        else:
+            unit.state = "DEAD"
+
+        # Structure bookkeeping
+        if unit.unit_type == "TOWER_ARCHER" and unit.structure_id:
+            for tower in self.geom.towers:
+                if tower.tower_id == unit.structure_id:
+                    tower.archers_alive = max(0, tower.archers_alive - 1)
+                    if tower.archers_alive == 0 and tower.state == "STANDING":
+                        tower.state = "VULNERABLE"
+                    break
+        if unit.unit_type == "CAPTAIN" and unit.structure_id:
+            for bunker in self.geom.bunkers:
+                if bunker.bunker_id == unit.structure_id:
+                    bunker.captain_alive = False
+                    map_data.destroy_bunker(bunker)
+                    break
 
         killer_faction = unit.last_hit_by_faction
         if killer_faction and killer_faction != unit.faction:
@@ -295,7 +376,8 @@ class Battlefield:
                     if target.hp <= 0:
                         self._on_unit_death(target)
         else:
-            self._advance_waypoint(unit, dt)
+            if unit.move_speed_px_s > 0 and unit.lane in config.LANE_WAYPOINTS:
+                self._advance_waypoint(unit, dt)
 
     def _process_respawns(self):
         if not self.respawn_queue:
@@ -317,6 +399,50 @@ class Battlefield:
                 remaining.append((respawn_time, uid))
         self.respawn_queue = remaining
 
+    def _update_tower_states(self, dt: float):
+        for tower in self.geom.towers:
+            if tower.state == "DESTROYED":
+                continue
+
+            # Count units in capture radius
+            enemy_counts = {"PLAYER": 0, "ENEMY": 0}
+            for unit in self.units.values():
+                if not unit.is_alive() or unit.unit_type == "TOWER_ARCHER":
+                    continue
+                dx = unit.pos[0] - tower.center[0]
+                dy = unit.pos[1] - tower.center[1]
+                dist2 = dx * dx + dy * dy
+                if dist2 <= config.TOWER_CONTEST_RADIUS_PX * config.TOWER_CONTEST_RADIUS_PX:
+                    enemy_counts[unit.faction] += 1
+
+            owner = tower.faction_owner
+            attacker = self._enemy_faction(owner)
+            tower.contested = enemy_counts[owner] > 0 and enemy_counts[attacker] > 0
+
+            if tower.state == "STANDING" and tower.archers_alive == 0:
+                tower.state = "VULNERABLE"
+
+            if tower.state == "VULNERABLE":
+                in_capture = 0
+                for unit in self.units.values():
+                    if not unit.is_alive() or unit.unit_type == "TOWER_ARCHER":
+                        continue
+                    dx = unit.pos[0] - tower.center[0]
+                    dy = unit.pos[1] - tower.center[1]
+                    dist2 = dx * dx + dy * dy
+                    if dist2 <= tower.capture_radius * tower.capture_radius and unit.faction == attacker:
+                        in_capture += 1
+
+                if in_capture > 0 and enemy_counts[owner] == 0:
+                    tower.occupy_timer += dt
+                elif tower.occupy_timer > 0 and in_capture == 0 and enemy_counts[owner] == 0:
+                    tower.occupy_timer = max(0.0, tower.occupy_timer - dt * config.TOWER_CAPTURE_DECAY_RATE)
+
+                if tower.occupy_timer >= config.TOWER_CAPTURE_DURATION_S:
+                    map_data.destroy_tower(tower)
+                    self._update_boss_scaling(owner)
+
+
     def update(self, dt: float):
         self.time_s += dt
         self._update_spatial()
@@ -324,6 +450,7 @@ class Battlefield:
             self._update_unit(unit, dt)
         self._apply_separation(dt)
         self._process_respawns()
+        self._update_tower_states(dt)
 
     def draw(self, surface, camera):
         for unit in self.units.values():

@@ -3,6 +3,10 @@ import math
 import pygame
 
 import config
+import math
+import pygame
+
+import config
 import map_data
 from camera import Camera
 from map_data import build_map_geometry
@@ -191,11 +195,20 @@ def draw_debug(surface, font, camera: Camera, geom, toggle, debug_state):
     battlefield: Battlefield = debug_state.get("battlefield")
     unit_counts = {"PLAYER": 0, "ENEMY": 0}
     respawns = 0
+    boss_lines = []
     if battlefield:
         for u in battlefield.units.values():
             if u.is_alive():
                 unit_counts[u.faction] += 1
         respawns = len(battlefield.respawn_queue)
+        for faction, bid in battlefield.boss_units.items():
+            boss = battlefield.units.get(bid)
+            if boss:
+                standing = sum(1 for t in geom.towers if t.faction_owner == faction and t.state != "DESTROYED")
+                mult = 1.0 + config.BOSS_HP_PER_TOWER_MULT * standing
+                boss_lines.append(
+                    f"Boss {faction}: {boss.hp:.0f}/{boss.max_hp:.0f} dmg {boss.damage:.1f} (mult {mult:.2f})"
+                )
     lines = [
         f"Camera: ({camera.x:.1f}, {camera.y:.1f})",
         f"Zoom: {camera.zoom:.2f}",
@@ -217,6 +230,7 @@ def draw_debug(surface, font, camera: Camera, geom, toggle, debug_state):
         f"Gold — Player: {battlefield.gold['PLAYER'] if battlefield else 0}, Enemy: {battlefield.gold['ENEMY'] if battlefield else 0}",
         f"Kills — Player: {battlefield.kills['PLAYER'] if battlefield else 0}, Enemy: {battlefield.kills['ENEMY'] if battlefield else 0}",
     ]
+    lines.extend(boss_lines)
     y = 10
     for line in lines:
         text = font.render(line, True, config.COLOR_DEBUG)
