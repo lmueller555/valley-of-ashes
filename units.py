@@ -38,6 +38,8 @@ class Unit:
     structure_id: Optional[str] = None  # tower/bunker association for defenders
     base_max_hp: Optional[float] = None  # used for boss scaling
     base_damage: Optional[float] = None
+    out_of_combat_time_s: float = 0.0
+    regen_timer_s: float = 0.0
 
     def is_alive(self) -> bool:
         return self.state not in {"DEAD", "RESPAWNING"}
@@ -456,6 +458,26 @@ class Battlefield:
                     unit.pos = half_step
                 # If still blocked, stay in place and wait for separation or path opening.
 
+    def _update_regeneration(self, unit: Unit, dt: float, in_combat: bool):
+        if in_combat:
+            unit.out_of_combat_time_s = 0.0
+            unit.regen_timer_s = 0.0
+            return
+
+        unit.out_of_combat_time_s += dt
+
+        if unit.hp >= unit.max_hp:
+            return
+
+        if unit.out_of_combat_time_s < config.REGEN_OUT_OF_COMBAT_DELAY_S:
+            return
+
+        unit.regen_timer_s += dt
+        while unit.regen_timer_s >= config.REGEN_INTERVAL_S:
+            unit.regen_timer_s -= config.REGEN_INTERVAL_S
+            heal_amount = unit.max_hp * config.REGEN_PERCENT
+            unit.hp = min(unit.max_hp, unit.hp + heal_amount)
+
     def _update_unit(self, unit: Unit, dt: float):
         if unit.state in {"DEAD", "RESPAWNING"}:
             return
@@ -510,6 +532,9 @@ class Battlefield:
             if unit.move_speed_px_s > 0 and unit.lane in config.LANE_WAYPOINTS:
                 self._advance_waypoint(unit, dt)
 
+        in_combat = unit.target_id is not None
+        self._update_regeneration(unit, dt, in_combat)
+
     def _respawn_unit_at_graveyard(self, unit: Unit, gy: map_data.Graveyard):
         unit.pos = gy.pos
         unit.hp = unit.max_hp
@@ -518,6 +543,8 @@ class Battlefield:
         unit.attack_timer_s = unit.attack_cooldown_s
         unit.last_hit_by_faction = None
         unit._wp_index = 0
+        unit.out_of_combat_time_s = 0.0
+        unit.regen_timer_s = 0.0
 
     def _process_respawns(self, dt: float):
         for gy in self.geom.graveyards:

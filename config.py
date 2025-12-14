@@ -175,6 +175,11 @@ AI_PURCHASE_COOLDOWNS = {
     "CAVALRY": 3.0,
 }
 
+# Out-of-combat regeneration
+REGEN_OUT_OF_COMBAT_DELAY_S = 5.0
+REGEN_INTERVAL_S = 5.0
+REGEN_PERCENT = 0.01
+
 # Units can only respawn a limited number of times before being removed from the game.
 UNIT_MAX_RESPAWNS = 10
 
