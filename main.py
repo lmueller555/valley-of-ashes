@@ -50,6 +50,34 @@ def draw_graveyard(surface, camera: Camera, pos, owner_color):
     pygame.draw.circle(surface, config.COLOR_WHITE, (sx, sy), max(4, int(10 * camera.zoom)), width=1)
 
 
+def draw_graveyard_status(surface, camera: Camera, font, battlefield: Battlefield):
+    bar_color_bg = config.COLOR_HEALTH_BG
+    for gy in battlefield.geom.graveyards:
+        if gy.starting_owner == "PLAYER":
+            owner_color = config.COLOR_PLAYER
+        elif gy.starting_owner == "ENEMY":
+            owner_color = config.COLOR_ENEMY
+        else:
+            owner_color = config.COLOR_NEUTRAL
+
+        sx, sy = camera.world_to_screen(gy.pos)
+        bar_width = max(28, int(46 * camera.zoom))
+        bar_height = max(4, int(6 * camera.zoom))
+        bar_y_offset = max(16, int(20 * camera.zoom))
+        bar_rect = pygame.Rect(int(sx - bar_width / 2), int(sy - bar_y_offset), bar_width, bar_height)
+
+        pygame.draw.rect(surface, bar_color_bg, bar_rect)
+        ratio = battlefield.graveyard_timer_ratio(gy.gy_id)
+        fill_width = max(0, min(bar_width, int(bar_width * ratio)))
+        if fill_width > 0:
+            pygame.draw.rect(surface, owner_color, (bar_rect.x, bar_rect.y, fill_width, bar_height))
+
+        waiting = battlefield.graveyard_waiting_count(gy.gy_id)
+        count_text = font.render(str(waiting), True, config.COLOR_WHITE)
+        text_pos = (bar_rect.right + max(4, int(6 * camera.zoom)), bar_rect.y - max(1, int(2 * camera.zoom)))
+        surface.blit(count_text, text_pos)
+
+
 def draw_lane(surface, camera: Camera, points):
     if len(points) < 2:
         return
@@ -204,7 +232,7 @@ def draw_debug(surface, font, camera: Camera, geom, toggle, debug_state):
         for u in battlefield.units.values():
             if u.is_alive():
                 unit_counts[u.faction] += 1
-        respawns = len(battlefield.respawn_queue)
+        respawns = battlefield.total_waiting_respawns()
         for faction, bid in battlefield.boss_units.items():
             boss = battlefield.units.get(bid)
             if boss:
@@ -322,6 +350,7 @@ def main():
         screen.fill(config.COLOR_BG)
         draw_map(screen, camera, geom)
         battlefield.draw(screen, camera)
+        draw_graveyard_status(screen, camera, font, battlefield)
         if state_cache.get("show_impassable"):
             draw_impassable_overlay(screen, camera, geom)
         if state_cache.get("show_spatial_grid"):

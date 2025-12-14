@@ -42,6 +42,12 @@ class Unit:
         return self.state not in {"DEAD", "RESPAWNING"}
 
 
+@dataclass
+class GraveyardRespawnState:
+    timer_s: float
+    waiting: List[Tuple[float, UnitId]]
+
+
 class SpatialHash:
     def __init__(self, cell_size: float = config.SPATIAL_HASH_CELL_SIZE):
         self.cell_size = cell_size
@@ -74,10 +80,17 @@ class Battlefield:
     def __init__(self, geom: map_data.MapGeometry):
         self.geom = geom
         self.units: Dict[UnitId, Unit] = {}
-        self.respawn_queue: List[Tuple[float, UnitId]] = []
         self.next_unit_id: UnitId = 1
         self.spatial = SpatialHash()
         self.time_s = 0.0
+
+        self.graveyard_states: Dict[str, GraveyardRespawnState] = {
+            gy.gy_id: GraveyardRespawnState(config.GRAVEYARD_RESPAWN_TIME_S, [])
+            for gy in self.geom.graveyards
+        }
+        self.graveyard_lookup: Dict[str, map_data.Graveyard] = {
+            gy.gy_id: gy for gy in self.geom.graveyards
+        }
 
         self.boss_units: Dict[str, UnitId] = {}
 
@@ -183,7 +196,7 @@ class Battlefield:
                 lane_index += 1
                 self.spawn_unit(faction, unit_type, lane)
 
-    def _nearest_graveyard(self, faction: str, pos: Tuple[float, float]) -> Tuple[float, float]:
+    def _nearest_graveyard(self, faction: str, pos: Tuple[float, float]) -> map_data.Graveyard:
         owned = [gy for gy in self.geom.graveyards if gy.starting_owner == faction]
         best = owned[0]
         best_d2 = (best.pos[0] - pos[0]) ** 2 + (best.pos[1] - pos[1]) ** 2
@@ -192,7 +205,23 @@ class Battlefield:
             if d2 < best_d2:
                 best = gy
                 best_d2 = d2
-        return best.pos
+        return best
+
+    def graveyard_waiting_count(self, gy_id: str) -> int:
+        state = self.graveyard_states.get(gy_id)
+        if not state:
+            return 0
+        return sum(1 for ready_time, _ in state.waiting if ready_time <= self.time_s)
+
+    def total_waiting_respawns(self) -> int:
+        return sum(self.graveyard_waiting_count(gy_id) for gy_id in self.graveyard_states)
+
+    def graveyard_timer_ratio(self, gy_id: str) -> float:
+        state = self.graveyard_states.get(gy_id)
+        if not state:
+            return 0.0
+        ratio = (config.GRAVEYARD_RESPAWN_TIME_S - state.timer_s) / config.GRAVEYARD_RESPAWN_TIME_S
+        return max(0.0, min(1.0, ratio))
 
     def _update_spatial(self):
         self.spatial.clear()
@@ -322,9 +351,12 @@ class Battlefield:
         if unit.state in {"DEAD", "RESPAWNING"}:
             return
 
-        if unit.respawns and unit.respawn_delay_s > 0:
+        if unit.respawns and unit.respawn_delay_s >= 0:
             unit.state = "RESPAWNING"
-            self.respawn_queue.append((self.time_s + unit.respawn_delay_s, unit.unit_id))
+            graveyard = self._nearest_graveyard(unit.faction, unit.pos)
+            state = self.graveyard_states.get(graveyard.gy_id)
+            if state:
+                state.waiting.append((self.time_s + unit.respawn_delay_s, unit.unit_id))
         else:
             unit.state = "DEAD"
 
@@ -430,25 +462,40 @@ class Battlefield:
             if unit.move_speed_px_s > 0 and unit.lane in config.LANE_WAYPOINTS:
                 self._advance_waypoint(unit, dt)
 
-    def _process_respawns(self):
-        if not self.respawn_queue:
-            return
-        remaining = []
-        for respawn_time, uid in self.respawn_queue:
-            unit = self.units.get(uid)
-            if unit is None:
+    def _process_respawns(self, dt: float):
+        for gy in self.geom.graveyards:
+            state = self.graveyard_states.get(gy.gy_id)
+            if state is None:
                 continue
-            if self.time_s >= respawn_time:
-                pos = self._nearest_graveyard(unit.faction, unit.pos)
-                unit.pos = pos
+            state.timer_s -= dt
+            if state.timer_s > 0:
+                continue
+
+            ready_units: List[UnitId] = []
+            remaining: List[Tuple[float, UnitId]] = []
+            for ready_time, uid in state.waiting:
+                if ready_time <= self.time_s:
+                    ready_units.append(uid)
+                else:
+                    remaining.append((ready_time, uid))
+            state.waiting = remaining
+
+            for uid in ready_units:
+                unit = self.units.get(uid)
+                if unit is None:
+                    continue
+                unit.pos = gy.pos
                 unit.hp = unit.max_hp
                 unit.state = "MARCHING"
                 unit.target_id = None
                 unit.attack_timer_s = unit.attack_cooldown_s
                 unit.last_hit_by_faction = None
-            else:
-                remaining.append((respawn_time, uid))
-        self.respawn_queue = remaining
+                if hasattr(unit, "_wp_index"):
+                    unit._wp_index = 0
+
+            state.timer_s += config.GRAVEYARD_RESPAWN_TIME_S
+            while state.timer_s <= 0:
+                state.timer_s += config.GRAVEYARD_RESPAWN_TIME_S
 
     def _update_tower_states(self, dt: float):
         for tower in self.geom.towers:
@@ -500,7 +547,7 @@ class Battlefield:
         for unit in self.units.values():
             self._update_unit(unit, dt)
         self._apply_separation(dt)
-        self._process_respawns()
+        self._process_respawns(dt)
         self._update_tower_states(dt)
 
     def draw(self, surface, camera):
