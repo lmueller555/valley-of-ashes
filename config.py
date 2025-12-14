@@ -195,6 +195,10 @@ HEALER_HEAL_ANIM_DURATION_S = 0.65
 BULWARK_TAUNT_COOLDOWN_S = 5.0
 BULWARK_TAUNT_TARGETS = 3
 
+# Recall ability
+RECALL_CHANNEL_DURATION_S = 5.0
+RECALL_COOLDOWN_S = 300.0
+
 # Units can only respawn a limited number of times before being removed from the game.
 UNIT_MAX_RESPAWNS = 10
 

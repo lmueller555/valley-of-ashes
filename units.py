@@ -44,6 +44,7 @@ class Unit:
     heal_timer_s: float = 0.0
     heal_anim_timer_s: float = 0.0
     taunt_timer_s: float = 0.0
+    recall_state: str = "IDLE"
 
     def is_alive(self) -> bool:
         return self.state not in {"DEAD", "RESPAWNING"}
@@ -92,6 +93,8 @@ class Battlefield:
             "ENEMY": config.STARTING_GOLD_ENEMY,
         }
         self.kills: Dict[str, int] = {"PLAYER": 0, "ENEMY": 0}
+        self.recall_cooldowns: Dict[str, float] = {"PLAYER": -999.0, "ENEMY": -999.0}
+        self.recall_channels: Dict[str, Optional[Dict[str, object]]] = {"PLAYER": None, "ENEMY": None}
 
         self.game_over = False
         self.winner: Optional[str] = None
@@ -232,6 +235,39 @@ class Battlefield:
         self.spawn_unit(faction, unit_type, chosen_lane)
         return True
 
+    def recall_cooldown_remaining(self, faction: str) -> float:
+        elapsed = self.time_s - self.recall_cooldowns.get(faction, -999.0)
+        remaining = config.RECALL_COOLDOWN_S - elapsed
+        return max(0.0, remaining)
+
+    def can_use_recall(self, faction: str) -> bool:
+        return (
+            not self.game_over
+            and self.recall_channels.get(faction) is None
+            and self.recall_cooldown_remaining(faction) <= 0.0
+        )
+
+    def trigger_recall(self, faction: str) -> bool:
+        if not self.can_use_recall(faction):
+            return False
+
+        targets: List[UnitId] = []
+        for unit in self.units.values():
+            if not unit.is_alive() or unit.faction != faction:
+                continue
+            if unit.unit_type in {"BOSS", "TOWER_ARCHER", "CAPTAIN"}:
+                continue
+            targets.append(unit.unit_id)
+            unit.recall_state = "CHANNELING"
+            unit.target_id = None
+
+        self.recall_cooldowns[faction] = self.time_s
+        self.recall_channels[faction] = {
+            "remaining": config.RECALL_CHANNEL_DURATION_S,
+            "units": targets,
+        }
+        return True
+
     def _home_graveyard(self, faction: str) -> Optional[map_data.Graveyard]:
         target_id = "GY_S_HOME" if faction == "PLAYER" else "GY_N_HOME"
         for gy in self.geom.graveyards:
@@ -251,6 +287,13 @@ class Battlefield:
                 best = gy
                 best_d2 = d2
         return best
+
+    def _boss_position(self, faction: str) -> Tuple[float, float]:
+        boss_id = self.boss_units.get(faction)
+        boss = self.units.get(boss_id) if boss_id is not None else None
+        if boss and boss.is_alive():
+            return boss.pos
+        return config.BOSS_SPAWN.get(faction, (0.0, 0.0))
 
     def _update_spatial(self):
         self.spatial.clear()
@@ -321,6 +364,43 @@ class Battlefield:
         unit.time_off_lane_s = 0.0
         unit.target_id = None
         self._reset_waypoint_progress(unit)
+
+    def _complete_recall(self, faction: str):
+        channel = self.recall_channels.get(faction)
+        if channel is None:
+            return
+
+        boss_pos = self._boss_position(faction)
+        angle_step = 2 * math.pi / max(1, max(8, len(channel["units"])))
+
+        for idx, unit_id in enumerate(channel["units"]):
+            unit = self.units.get(unit_id)
+            if unit is None or not unit.is_alive():
+                continue
+
+            ring = idx // 12
+            radius = 32 + 18 * ring
+            angle = angle_step * idx
+            unit.pos = (
+                boss_pos[0] + math.cos(angle) * radius,
+                boss_pos[1] + math.sin(angle) * radius,
+            )
+            unit.recall_state = "RETURNING"
+            unit.target_id = None
+            unit.attack_timer_s = unit.attack_cooldown_s
+            unit.time_off_lane_s = 0.0
+            unit.out_of_combat_time_s = 0.0
+            self._reset_waypoint_progress(unit)
+
+        self.recall_channels[faction] = None
+
+    def _update_recall(self, dt: float):
+        for faction, channel in list(self.recall_channels.items()):
+            if channel is None:
+                continue
+            channel["remaining"] = float(channel.get("remaining", 0.0)) - dt
+            if channel["remaining"] <= 0.0:
+                self._complete_recall(faction)
 
     def _apply_separation(self, dt: float):
         for unit in self.units.values():
@@ -475,6 +555,8 @@ class Battlefield:
             self.gold[killer_faction] = self.gold.get(killer_faction, 0) + unit.gold_reward
             self.kills[killer_faction] = self.kills.get(killer_faction, 0) + 1
 
+        unit.recall_state = "IDLE"
+
     def _reset_waypoint_progress(self, unit: Unit):
         if unit.lane not in config.LANE_WAYPOINTS:
             return
@@ -610,6 +692,9 @@ class Battlefield:
         if unit.state in {"DEAD", "RESPAWNING"}:
             return
 
+        if unit.recall_state == "CHANNELING":
+            return
+
         self._recover_stuck_unit(unit, dt)
         self._update_bulwark(unit, dt)
         self._update_healer(unit, dt)
@@ -680,6 +765,7 @@ class Battlefield:
         unit.heal_timer_s = 0.0
         unit.heal_anim_timer_s = 0.0
         unit.taunt_timer_s = 0.0
+        unit.recall_state = "IDLE"
 
     def _update_graveyard_respawn_progress(self, gy: map_data.Graveyard):
         if not gy.waiting_units:
@@ -802,6 +888,7 @@ class Battlefield:
         if getattr(self, "game_over", False):
             return
 
+        self._update_recall(dt)
         self._update_spatial()
         for unit in self.units.values():
             self._update_unit(unit, dt)
@@ -944,11 +1031,25 @@ class MacroAI:
             if not bought:
                 break
 
+    def _maybe_trigger_recall(self):
+        faction = "ENEMY"
+        if not self.battlefield.can_use_recall(faction):
+            return
+
+        boss_id = self.battlefield.boss_units.get(faction)
+        boss = self.battlefield.units.get(boss_id) if boss_id is not None else None
+        if boss is None or not boss.is_alive() or boss.max_hp <= 0:
+            return
+
+        if boss.hp <= 0.5 * boss.max_hp:
+            self.battlefield.trigger_recall(faction)
+
     def update(self, dt: float):
         if self.battlefield.game_over:
             return
         self.sense_timer += dt
         self.decision_timer += dt
+        self._maybe_trigger_recall()
         if self.sense_timer >= config.AI_SENSE_INTERVAL:
             self._count_active_units()
             self.sense_timer = 0.0

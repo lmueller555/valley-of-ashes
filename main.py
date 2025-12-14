@@ -16,6 +16,7 @@ class Button:
     label: str
     cost: int
     unit_type: str
+    action: str = "purchase"
 
 
 def world_rect_to_screen(camera: Camera, rect: pygame.Rect) -> pygame.Rect:
@@ -207,7 +208,16 @@ def draw_spatial_grid(surface, camera: Camera, cell_size: float):
     surface.blit(overlay, (0, 0))
 
 
-def draw_button(surface, font, button: Button, enabled: bool, hovered: bool, pressed: bool):
+def draw_button(
+    surface,
+    font,
+    button: Button,
+    enabled: bool,
+    hovered: bool,
+    pressed: bool,
+    label_override: str | None = None,
+    show_cost: bool = True,
+):
     base_color = (70, 110, 80) if enabled else (60, 60, 60)
     if hovered and enabled:
         base_color = (80, 140, 95)
@@ -216,7 +226,9 @@ def draw_button(surface, font, button: Button, enabled: bool, hovered: bool, pre
     border_color = (150, 200, 160) if enabled else (90, 90, 90)
     pygame.draw.rect(surface, base_color, button.rect)
     pygame.draw.rect(surface, border_color, button.rect, width=2)
-    label = f"{button.label} ({button.cost})"
+    label = label_override if label_override is not None else button.label
+    if show_cost:
+        label = f"{label} ({button.cost})"
     text_color = config.COLOR_WHITE if enabled else (150, 150, 150)
     text = font.render(label, True, text_color)
     text_pos = text.get_rect(center=button.rect.center)
@@ -241,6 +253,8 @@ def build_purchase_buttons(font):
         rect = pygame.Rect(x, y, width, height)
         buttons.append(Button(rect, label, config.UNIT_STATS[unit_type]["cost"], unit_type))
         x += width + padding
+    recall_rect = pygame.Rect(config.RIBBON_RECT.left + 20, y + height + padding, width, height)
+    buttons.append(Button(recall_rect, "Recall Units", 0, "", action="recall"))
     return buttons
 
 
@@ -264,9 +278,25 @@ def draw_ribbon(surface, font, battlefield: Battlefield, buttons):
     mouse_pos = pygame.mouse.get_pos()
     mouse_down = pygame.mouse.get_pressed()[0]
     for button in buttons:
-        enabled = battlefield.gold["PLAYER"] >= button.cost and not battlefield.game_over
+        enabled = not battlefield.game_over
+        label_override = None
+        show_cost = button.action == "purchase"
+        if button.action == "purchase":
+            enabled = enabled and battlefield.gold["PLAYER"] >= button.cost
+        elif button.action == "recall":
+            cooldown = battlefield.recall_cooldown_remaining("PLAYER")
+            channel = battlefield.recall_channels.get("PLAYER")
+            if channel is not None:
+                label_override = "Recall Units (Channeling)"
+                enabled = False
+            elif cooldown > 0:
+                label_override = f"Recall Units ({int(math.ceil(cooldown))}s)"
+                enabled = False
+            else:
+                label_override = "Recall Units (Ready)"
+            show_cost = False
         hovered = button.rect.collidepoint(mouse_pos)
-        draw_button(surface, font, button, enabled, hovered, hovered and mouse_down)
+        draw_button(surface, font, button, enabled, hovered, hovered and mouse_down, label_override, show_cost)
 
 
 def draw_debug(surface, font, camera: Camera, geom, toggle, debug_state):
@@ -371,7 +401,10 @@ def handle_buttons(battlefield: Battlefield, buttons, mouse_pos):
         return
     for button in buttons:
         if button.rect.collidepoint(mouse_pos):
-            battlefield.purchase_unit("PLAYER", button.unit_type)
+            if button.action == "purchase":
+                battlefield.purchase_unit("PLAYER", button.unit_type)
+            elif button.action == "recall":
+                battlefield.trigger_recall("PLAYER")
 
 
 def main():
