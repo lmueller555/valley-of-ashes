@@ -249,6 +249,49 @@ class Battlefield:
                     uy + repulse_y / length * speed * dt,
                 )
 
+    def _bunker_for_id(self, bunker_id: Optional[str]) -> Optional[map_data.Bunker]:
+        if bunker_id is None:
+            return None
+        for bunker in self.geom.bunkers:
+            if bunker.bunker_id == bunker_id:
+                return bunker
+        return None
+
+    def _select_captain_target(self, unit: Unit, bunker: map_data.Bunker) -> Optional[UnitId]:
+        best_id = None
+        best_dist2 = None
+        ux, uy = unit.pos
+        for enemy in self.units.values():
+            if not enemy.is_alive() or enemy.faction == unit.faction:
+                continue
+            ex, ey = enemy.pos
+            if not bunker.rect.collidepoint(ex, ey):
+                continue
+            dist2 = (ex - ux) * (ex - ux) + (ey - uy) * (ey - uy)
+            if best_id is None or dist2 < best_dist2:
+                best_id = enemy.unit_id
+                best_dist2 = dist2
+        return best_id
+
+    def _friendly_bunker_bonus(self, unit: Unit) -> bool:
+        if unit.unit_type == "TOWER_ARCHER":
+            return False
+        for bunker in self.geom.bunkers:
+            if (
+                bunker.faction_owner == unit.faction
+                and bunker.state != "DESTROYED"
+                and bunker.captain_alive
+                and bunker.rect.collidepoint(*unit.pos)
+            ):
+                return True
+        return False
+
+    def _effective_attack_cooldown(self, unit: Unit) -> float:
+        cooldown = unit.attack_cooldown_s
+        if self._friendly_bunker_bonus(unit):
+            cooldown *= 0.8
+        return cooldown
+
     def _select_target(self, unit: Unit) -> Optional[UnitId]:
         candidates = self.spatial.query_radius(unit.pos, unit.aggro_range_px)
         best_id = None
@@ -339,6 +382,8 @@ class Battlefield:
         if unit.state in {"DEAD", "RESPAWNING"}:
             return
 
+        bunker = self._bunker_for_id(unit.structure_id) if unit.unit_type == "CAPTAIN" else None
+
         if unit.target_id is not None:
             target = self.units.get(unit.target_id)
             if target is None or not target.is_alive():
@@ -348,10 +393,16 @@ class Battlefield:
                 dx = tx - unit.pos[0]
                 dy = ty - unit.pos[1]
                 dist2 = dx * dx + dy * dy
-                if dist2 > unit.aggro_range_px * unit.aggro_range_px:
+                target_inside_bunker = bunker is not None and bunker.rect.collidepoint(tx, ty)
+                if not target_inside_bunker and dist2 > unit.aggro_range_px * unit.aggro_range_px:
                     unit.target_id = None
 
-        if unit.target_id is None:
+        bunker_target = None
+        if unit.unit_type == "CAPTAIN" and bunker:
+            bunker_target = self._select_captain_target(unit, bunker)
+        if bunker_target is not None:
+            unit.target_id = bunker_target
+        elif unit.target_id is None:
             unit.target_id = self._select_target(unit)
 
         if unit.target_id is not None:
@@ -372,7 +423,7 @@ class Battlefield:
                 if unit.attack_timer_s <= 0:
                     target.hp -= unit.damage
                     target.last_hit_by_faction = unit.faction
-                    unit.attack_timer_s = unit.attack_cooldown_s
+                    unit.attack_timer_s = self._effective_attack_cooldown(unit)
                     if target.hp <= 0:
                         self._on_unit_death(target)
         else:

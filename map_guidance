@@ -419,7 +419,7 @@ SOUTH Captain Bunker (Player-side)
 
 Overall footprint (courtyard zone; passable):
 
-S_BUNKER_RECT: x 1100→1900, y 2860→3180
+S_BUNKER_RECT: x 600→2400, y 2860→3180
 
 Center: S_BUNKER_CENTER = (1500, 3020)
 
@@ -427,23 +427,23 @@ Captain spawn: (1500, 3020)
 
 Wall segments (impassable): (implemented as rectangles)
 
-West wall: x 1100→1118, y 2860→3180
+West wall: x 600→618, y 2860→3180
 
-East wall: x 1882→1900, y 2860→3180
+East wall: x 2382→2400, y 2860→3180
 
 North wall: split into two segments with a gate opening:
 
-Left segment: x 1100→1370, y 2860→2878
+Left segment: x 600→1370, y 2860→2878
 
-Right segment: x 1630→1900, y 2860→2878
+Right segment: x 1630→2400, y 2860→2878
 
 Gate opening between x 1370→1630 (width 260)
 
 South wall: split into two segments with a gate opening:
 
-Left segment: x 1100→1370, y 3162→3180
+Left segment: x 600→1370, y 3162→3180
 
-Right segment: x 1630→1900, y 3162→3180
+Right segment: x 1630→2400, y 3162→3180
 
 Gate opening between x 1370→1630
 
