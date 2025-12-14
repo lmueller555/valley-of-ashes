@@ -198,7 +198,7 @@ RECALL_CHANNEL_DURATION_S = 5.0
 RECALL_COOLDOWN_S = 300.0
 
 # Units can only respawn a limited number of times before being removed from the game.
-UNIT_MAX_RESPAWNS = 10
+UNIT_MAX_RESPAWNS = 5
 
 UNIT_RESPAWNS = {
     "GRUNT": UNIT_MAX_RESPAWNS,
