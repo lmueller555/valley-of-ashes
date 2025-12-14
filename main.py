@@ -1,3 +1,5 @@
+import math
+
 import pygame
 
 import config
@@ -132,6 +134,34 @@ def draw_impassable_overlay(surface, camera: Camera, geom):
     surface.blit(overlay, (0, 0))
 
 
+def draw_spatial_grid(surface, camera: Camera, cell_size: float):
+    """Render the spatial hash grid for debugging separation/aggro queries."""
+
+    overlay = pygame.Surface(config.MAP_VIEW_RECT.size, pygame.SRCALPHA)
+    view_left = camera.x - config.MAP_VIEW_RECT.width / (2 * camera.zoom)
+    view_right = camera.x + config.MAP_VIEW_RECT.width / (2 * camera.zoom)
+    view_top = camera.y - config.MAP_VIEW_RECT.height / (2 * camera.zoom)
+    view_bottom = camera.y + config.MAP_VIEW_RECT.height / (2 * camera.zoom)
+
+    start_x = math.floor(view_left / cell_size) * cell_size
+    start_y = math.floor(view_top / cell_size) * cell_size
+
+    grid_color = (120, 180, 120, 60)
+    x = start_x
+    while x <= view_right:
+        sx, _ = camera.world_to_screen((x, view_top))
+        pygame.draw.line(overlay, grid_color, (sx, 0), (sx, config.MAP_VIEW_RECT.height))
+        x += cell_size
+
+    y = start_y
+    while y <= view_bottom:
+        _, sy = camera.world_to_screen((view_left, y))
+        pygame.draw.line(overlay, grid_color, (0, sy), (config.MAP_VIEW_RECT.width, sy))
+        y += cell_size
+
+    surface.blit(overlay, (0, 0))
+
+
 def draw_ribbon(surface, font):
     pygame.draw.rect(surface, config.COLOR_RIBBON, config.RIBBON_RECT)
     header = font.render("Valley of Ashes — Control Ribbon (placeholder)", True, config.COLOR_WHITE)
@@ -163,6 +193,7 @@ def draw_debug(surface, font, camera: Camera, geom, toggle, debug_state):
         f"Passable: {'YES' if passable else 'NO'}",
         "F1: toggle debug overlay",
         "F2: toggle impassable overlay",
+        "F3: toggle spatial hash grid",
         "SPACE: center on home graveyard",
         f"Towers: {len(geom.towers)} (capture r={config.TOWER_CAPTURE_RADIUS_PX})",
         f"Tower states: {tower_states}",
@@ -170,6 +201,7 @@ def draw_debug(surface, font, camera: Camera, geom, toggle, debug_state):
         f"Bunker states: {bunker_states}",
         f"Graveyards: {len(geom.graveyards)}",
         f"Impassable overlay: {'ON' if debug_state.get('show_impassable') else 'OFF'}",
+        f"Spatial grid: {'ON' if debug_state.get('show_spatial_grid') else 'OFF'}",
         f"Units — Player: {unit_counts['PLAYER']}, Enemy: {unit_counts['ENEMY']}",
         f"Respawn queue: {respawns}",
     ]
@@ -218,10 +250,16 @@ def main():
     camera = Camera()
     geom = build_map_geometry()
     battlefield = Battlefield(geom)
-    battlefield.seed_wave("PLAYER", {"GRUNT": 12, "LIEUTENANT": 4})
-    battlefield.seed_wave("ENEMY", {"GRUNT": 12, "LIEUTENANT": 4})
+    starting_counts = {"GRUNT": 24, "LIEUTENANT": 6, "CAVALRY": 2}
+    battlefield.seed_wave("PLAYER", starting_counts)
+    battlefield.seed_wave("ENEMY", starting_counts)
     debug_overlay = False
-    state_cache = {"last_mouse": None, "show_impassable": False, "battlefield": battlefield}
+    state_cache = {
+        "last_mouse": None,
+        "show_impassable": False,
+        "show_spatial_grid": False,
+        "battlefield": battlefield,
+    }
 
     running = True
     while running:
@@ -236,6 +274,8 @@ def main():
                     debug_overlay = not debug_overlay
                 elif event.key == pygame.K_F2:
                     state_cache["show_impassable"] = not state_cache["show_impassable"]
+                elif event.key == pygame.K_F3:
+                    state_cache["show_spatial_grid"] = not state_cache["show_spatial_grid"]
                 elif event.key == pygame.K_SPACE:
                     camera.center_on(config.GRAVEYARDS_SOUTH["GY_S_HOME"])
             elif event.type == pygame.MOUSEWHEEL:
@@ -252,6 +292,8 @@ def main():
         battlefield.draw(screen, camera)
         if state_cache.get("show_impassable"):
             draw_impassable_overlay(screen, camera, geom)
+        if state_cache.get("show_spatial_grid"):
+            draw_spatial_grid(screen, camera, battlefield.spatial.cell_size)
         draw_ribbon(screen, font)
         draw_debug(screen, font, camera, geom, debug_overlay, state_cache)
         pygame.display.flip()

@@ -39,7 +39,7 @@ class Unit:
 
 
 class SpatialHash:
-    def __init__(self, cell_size: float = 180):
+    def __init__(self, cell_size: float = config.SPATIAL_HASH_CELL_SIZE):
         self.cell_size = cell_size
         self.buckets: Dict[Tuple[int, int], List[UnitId]] = {}
 
@@ -218,11 +218,18 @@ class Battlefield:
             return
         if dist > 0:
             step = unit.move_speed_px_s * dt
-            if step >= dist:
-                unit.pos = target
-                unit._wp_index += 1
+            step_ratio = min(1.0, step / dist)
+            proposed = (ux + dx * step_ratio, uy + dy * step_ratio)
+            if map_data.is_point_passable(proposed, self.geom):
+                unit.pos = proposed
+                if step_ratio >= 1.0:
+                    unit._wp_index += 1
             else:
-                unit.pos = (ux + dx / dist * step, uy + dy / dist * step)
+                # If blocked, try a half step to reduce tunneling into impassables.
+                half_step = (ux + dx * step_ratio * 0.5, uy + dy * step_ratio * 0.5)
+                if map_data.is_point_passable(half_step, self.geom):
+                    unit.pos = half_step
+                # If still blocked, stay in place and wait for separation or path opening.
 
     def _update_unit(self, unit: Unit, dt: float):
         if unit.state in {"DEAD", "RESPAWNING"}:
