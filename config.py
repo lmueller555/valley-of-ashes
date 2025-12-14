@@ -175,6 +175,9 @@ AI_PURCHASE_COOLDOWNS = {
     "CAVALRY": 3.0,
 }
 
+# Units can only respawn a limited number of times before being removed from the game.
+UNIT_MAX_RESPAWNS = 10
+
 # Unit stats (from unit_guidance)
 UNIT_STATS = {
     "GRUNT": {

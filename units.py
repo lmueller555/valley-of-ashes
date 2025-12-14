@@ -34,6 +34,7 @@ class Unit:
     respawn_delay_s: float = 0.0
     gold_reward: int = 0
     respawns: bool = True
+    remaining_respawns: int = config.UNIT_MAX_RESPAWNS
     structure_id: Optional[str] = None  # tower/bunker association for defenders
     base_max_hp: Optional[float] = None  # used for boss scaling
     base_damage: Optional[float] = None
@@ -116,6 +117,7 @@ class Battlefield:
                 archer.leash_anchor = tower.center
                 archer.leash_radius_px = config.TOWER_CAPTURE_RADIUS_PX
                 archer.respawns = False
+                archer.remaining_respawns = 0
                 archer.structure_id = tower.tower_id
 
         # Captains
@@ -125,6 +127,7 @@ class Battlefield:
             captain.leash_anchor = bunker.center
             captain.leash_radius_px = 120
             captain.respawns = False
+            captain.remaining_respawns = 0
             captain.structure_id = bunker.bunker_id
 
         # Bosses with scaling
@@ -134,6 +137,7 @@ class Battlefield:
             boss.leash_anchor = spawn
             boss.leash_radius_px = config.BOSS_LEASH_RADIUS
             boss.respawns = False
+            boss.remaining_respawns = 0
             boss.base_max_hp = config.BOSS_BASE_MAX_HP
             boss.base_damage = config.BOSS_BASE_DAMAGE
             self.boss_units[faction] = boss.unit_id
@@ -176,6 +180,7 @@ class Battlefield:
             respawn_delay_s=stats["respawn_delay_s"],
             gold_reward=stats["gold_reward"],
         )
+        unit.remaining_respawns = config.UNIT_MAX_RESPAWNS if unit.respawns else 0
         self.units[uid] = unit
         self._reset_waypoint_progress(unit)
         return unit
@@ -365,7 +370,7 @@ class Battlefield:
         if unit.state in {"DEAD", "RESPAWNING"}:
             return
 
-        if unit.respawns:
+        if unit.respawns and unit.remaining_respawns > 0:
             gy = self._nearest_graveyard(unit.faction, unit.pos)
             if gy is not None:
                 unit.state = "RESPAWNING"
@@ -374,6 +379,7 @@ class Battlefield:
                 unit.state = "DEAD"
         else:
             unit.state = "DEAD"
+            unit.remaining_respawns = 0
 
         # Structure bookkeeping
         if unit.unit_type == "TOWER_ARCHER" and unit.structure_id:
@@ -525,10 +531,15 @@ class Battlefield:
                 unit = self.units.get(uid)
                 if unit is None or not unit.respawns:
                     continue
+                if unit.remaining_respawns <= 0:
+                    unit.state = "DEAD"
+                    unit.remaining_respawns = 0
+                    continue
                 target_gy = gy if gy.owner == unit.faction else self._nearest_graveyard(unit.faction, gy.pos)
                 if target_gy is None:
                     unit.state = "DEAD"
                     continue
+                unit.remaining_respawns -= 1
                 self._respawn_unit_at_graveyard(unit, target_gy)
                 self._reset_waypoint_progress(unit)
 
