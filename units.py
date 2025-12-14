@@ -41,6 +41,8 @@ class Unit:
     out_of_combat_time_s: float = 0.0
     regen_timer_s: float = 0.0
     time_off_lane_s: float = 0.0
+    heal_timer_s: float = 0.0
+    heal_anim_timer_s: float = 0.0
 
     def is_alive(self) -> bool:
         return self.state not in {"DEAD", "RESPAWNING"}
@@ -534,11 +536,39 @@ class Battlefield:
             heal_amount = unit.max_hp * config.REGEN_PERCENT
             unit.hp = min(unit.max_hp, unit.hp + heal_amount)
 
+    def _update_healer(self, unit: Unit, dt: float):
+        if unit.unit_type != "HEALER":
+            return
+
+        unit.heal_timer_s += dt
+        unit.heal_anim_timer_s = max(0.0, unit.heal_anim_timer_s - dt)
+
+        if unit.heal_timer_s < config.HEALER_HEAL_COOLDOWN_S:
+            return
+
+        unit.heal_timer_s -= config.HEALER_HEAL_COOLDOWN_S
+
+        healed_any = False
+        candidates = self.spatial.query_radius(unit.pos, config.HEALER_HEAL_RADIUS_PX)
+        for cid in candidates:
+            ally = self.units.get(cid)
+            if ally is None or not ally.is_alive() or ally.faction != unit.faction:
+                continue
+            if ally.hp >= ally.max_hp:
+                continue
+            heal_amount = ally.max_hp * config.HEALER_HEAL_PERCENT
+            ally.hp = min(ally.max_hp, ally.hp + heal_amount)
+            healed_any = True
+
+        if healed_any:
+            unit.heal_anim_timer_s = config.HEALER_HEAL_ANIM_DURATION_S
+
     def _update_unit(self, unit: Unit, dt: float):
         if unit.state in {"DEAD", "RESPAWNING"}:
             return
 
         self._recover_stuck_unit(unit, dt)
+        self._update_healer(unit, dt)
 
         elite_zone = self._elite_aggro_zone(unit)
 
@@ -603,6 +633,8 @@ class Battlefield:
         unit._wp_index = 0
         unit.out_of_combat_time_s = 0.0
         unit.regen_timer_s = 0.0
+        unit.heal_timer_s = 0.0
+        unit.heal_anim_timer_s = 0.0
 
     def _update_graveyard_respawn_progress(self, gy: map_data.Graveyard):
         if not gy.waiting_units:
@@ -762,6 +794,22 @@ class Battlefield:
             else:
                 radius = max(2, int(base_radius * zoom))
             pygame.draw.circle(surface, color, (int(sx), int(sy)), radius)
+
+            if unit.unit_type == "HEALER" and unit.heal_anim_timer_s > 0:
+                t = unit.heal_anim_timer_s / config.HEALER_HEAL_ANIM_DURATION_S
+                ring_radius = int((radius + 6) + (18 * (1 - t)) * zoom)
+                ring_radius = max(ring_radius, radius + 4)
+                ring_size = ring_radius * 2 + 2
+                ring_surface = pygame.Surface((ring_size, ring_size), pygame.SRCALPHA)
+                alpha = max(40, int(160 * t))
+                pygame.draw.circle(
+                    ring_surface,
+                    (*config.COLOR_HEAL, alpha),
+                    (ring_radius + 1, ring_radius + 1),
+                    ring_radius,
+                    width=3,
+                )
+                surface.blit(ring_surface, (int(sx) - ring_radius - 1, int(sy) - ring_radius - 1))
 
             show_health = False
             if zoom >= 1.3:

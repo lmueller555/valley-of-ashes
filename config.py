@@ -41,6 +41,7 @@ COLOR_HEALTH_YELLOW = (230, 210, 60)
 COLOR_HEALTH_ORANGE = (240, 150, 50)
 COLOR_HEALTH_RED = (200, 70, 70)
 COLOR_HEALTH_BG = (20, 20, 24)
+COLOR_HEAL = (120, 210, 200)
 
 # Rift and cliffs
 CLIFF_BELT_WIDTH = 120
@@ -184,6 +185,12 @@ REGEN_OUT_OF_COMBAT_DELAY_S = 5.0
 REGEN_INTERVAL_S = 5.0
 REGEN_PERCENT = 0.01
 
+# Healer ability
+HEALER_HEAL_PERCENT = 0.03
+HEALER_HEAL_COOLDOWN_S = 5.0
+HEALER_HEAL_RADIUS_PX = 200
+HEALER_HEAL_ANIM_DURATION_S = 0.65
+
 # Units can only respawn a limited number of times before being removed from the game.
 UNIT_MAX_RESPAWNS = 10
 
@@ -221,6 +228,17 @@ UNIT_STATS = {
         "respawn_delay_s": 20,
         "cost": 70,
         "gold_reward": 12,
+    },
+    "HEALER": {
+        "max_hp": 65,
+        "damage": 5,
+        "attack_range_px": 18,
+        "aggro_range_px": 140,
+        "attack_cooldown_s": 1.40,
+        "move_speed_px_s": 78,
+        "respawn_delay_s": 18,
+        "cost": 100,
+        "gold_reward": 18,
     },
     "TOWER_ARCHER": {
         "max_hp": 40,

@@ -234,6 +234,7 @@ def build_purchase_buttons(font):
         ("Buy Grunt", "GRUNT"),
         ("Buy Lieutenant", "LIEUTENANT"),
         ("Buy Cavalry", "CAVALRY"),
+        ("Buy Healer", "HEALER"),
     ]
     for label, unit_type in data:
         rect = pygame.Rect(x, y, width, height)
