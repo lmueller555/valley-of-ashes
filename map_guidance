@@ -304,7 +304,7 @@ Spawns a garrison of tower archers (see unit_guidance)
 
 Becomes VULNERABLE only when all its archers are dead
 
-Is permanently DESTROYED when an enemy occupies it uncontested for 180 seconds (3 minutes)
+Is permanently DESTROYED once a 180-second (3 minute) destruction timer completes after all archers are dead (no occupation required)
 
 Important: Towers do not flip ownership; they are destroyed.
 
