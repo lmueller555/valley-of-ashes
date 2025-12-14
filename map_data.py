@@ -251,13 +251,15 @@ def is_point_passable(point: Tuple[float, float], geom: MapGeometry) -> bool:
     if config.RIFT_TOP <= py <= config.RIFT_BOTTOM and not is_inside_crossing(point):
         return False
 
-    # Tower cores (standing or vulnerable only)
+    # Tower cores (standing or vulnerable only) with lane openings
     for tower in geom.towers:
         if tower.state == "DESTROYED":
             continue
         dx = px - tower.center[0]
         dy = py - tower.center[1]
         if dx * dx + dy * dy <= tower.core_radius * tower.core_radius:
+            if abs(dx) <= config.TOWER_OPENING_HALF_WIDTH_PX:
+                continue
             return False
 
     # Bunker walls
