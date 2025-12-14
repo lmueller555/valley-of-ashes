@@ -139,6 +139,7 @@ class Battlefield:
             captain.respawns = False
             captain.remaining_respawns = 0
             captain.structure_id = bunker.bunker_id
+            self._configure_elite_unit_zone(captain, bunker.rect)
 
         # Bosses with scaling
         for faction, spawn in config.BOSS_SPAWN.items():
@@ -151,6 +152,8 @@ class Battlefield:
             boss.base_max_hp = config.BOSS_BASE_MAX_HP
             boss.base_damage = config.BOSS_BASE_DAMAGE
             self.boss_units[faction] = boss.unit_id
+            keep_rect = config.S_KEEP_RECT if faction == "PLAYER" else config.N_KEEP_RECT
+            self._configure_elite_unit_zone(boss, keep_rect)
         self._spawn_commanders()
         self._update_boss_scaling("PLAYER")
         self._update_boss_scaling("ENEMY")
@@ -184,6 +187,8 @@ class Battlefield:
             commander.base_max_hp = config.COMMANDER_BASE_MAX_HP
             commander.base_damage = config.COMMANDER_BASE_DAMAGE
             self.commanders_by_tower[tower.tower_id] = commander.unit_id
+            keep_rect = config.S_KEEP_RECT if faction == "PLAYER" else config.N_KEEP_RECT
+            self._configure_elite_unit_zone(commander, keep_rect)
 
     def _spawn_commanders(self):
         self._spawn_commanders_for_faction("PLAYER")
@@ -328,6 +333,12 @@ class Battlefield:
         if boss and boss.is_alive():
             return boss.pos
         return config.BOSS_SPAWN.get(faction, (0.0, 0.0))
+
+    def _elite_aggro_radius(self, rect: pygame.Rect) -> float:
+        return math.hypot(rect.width / 2, rect.height / 2)
+
+    def _configure_elite_unit_zone(self, unit: Unit, rect: pygame.Rect):
+        unit.aggro_range_px = self._elite_aggro_radius(rect)
 
     def _update_spatial(self):
         self.spatial.clear()
@@ -490,6 +501,23 @@ class Battlefield:
                     uy + repulse_y / length * speed * dt,
                 )
 
+    def _move_towards(self, unit: Unit, dest: Tuple[float, float], dt: float, stop_distance: float = 0.0):
+        dx = dest[0] - unit.pos[0]
+        dy = dest[1] - unit.pos[1]
+        dist = math.hypot(dx, dy)
+        if dist <= stop_distance or dist == 0:
+            return
+        step = unit.move_speed_px_s * dt
+        max_step = dist - stop_distance
+        if step > max_step:
+            step = max_step
+        if step <= 0:
+            return
+        unit.pos = (
+            unit.pos[0] + dx / dist * step,
+            unit.pos[1] + dy / dist * step,
+        )
+
     def _bunker_for_id(self, bunker_id: Optional[str]) -> Optional[map_data.Bunker]:
         if bunker_id is None:
             return None
@@ -502,10 +530,10 @@ class Battlefield:
         if unit.unit_type == "CAPTAIN":
             bunker = self._bunker_for_id(unit.structure_id)
             if bunker is not None:
-                return bunker.rect, bunker.center
-        elif unit.unit_type == "BOSS":
+                return bunker.rect, unit.leash_anchor
+        elif unit.unit_type in {"BOSS", "COMMANDER"}:
             keep_rect = config.S_KEEP_RECT if unit.faction == "PLAYER" else config.N_KEEP_RECT
-            return keep_rect, keep_rect.center
+            return keep_rect, unit.leash_anchor
         return None
 
     def _select_elite_target(self, unit: Unit, zone: pygame.Rect) -> Optional[UnitId]:
@@ -800,6 +828,7 @@ class Battlefield:
         self._update_healer(unit, dt)
 
         elite_zone = self._elite_aggro_zone(unit)
+        zone_rect, zone_home = elite_zone if elite_zone is not None else (None, None)
 
         if unit.target_id is not None:
             target = self.units.get(unit.target_id)
@@ -810,15 +839,15 @@ class Battlefield:
                 dx = tx - unit.pos[0]
                 dy = ty - unit.pos[1]
                 dist2 = dx * dx + dy * dy
-                target_inside_zone = elite_zone is not None and elite_zone[0].collidepoint(tx, ty)
-                if not target_inside_zone and dist2 > unit.aggro_range_px * unit.aggro_range_px:
+                target_inside_zone = zone_rect is not None and zone_rect.collidepoint(tx, ty)
+                if zone_rect is not None and not target_inside_zone:
+                    unit.target_id = None
+                elif not target_inside_zone and dist2 > unit.aggro_range_px * unit.aggro_range_px:
                     unit.target_id = None
 
-        if elite_zone is not None:
-            elite_target = self._select_elite_target(unit, elite_zone[0])
-            if elite_target is not None:
-                unit.target_id = elite_target
-        if unit.target_id is None:
+        if zone_rect is not None and unit.target_id is None:
+            unit.target_id = self._select_elite_target(unit, zone_rect)
+        if unit.target_id is None and zone_rect is None:
             unit.target_id = self._select_target(unit)
 
         if unit.target_id is not None:
@@ -828,12 +857,7 @@ class Battlefield:
             dy = ty - unit.pos[1]
             dist = math.hypot(dx, dy)
             if dist > unit.attack_range_px:
-                if dist > 0:
-                    step = unit.move_speed_px_s * dt
-                    unit.pos = (
-                        unit.pos[0] + dx / dist * step,
-                        unit.pos[1] + dy / dist * step,
-                    )
+                self._move_towards(unit, target.pos, dt, stop_distance=unit.attack_range_px)
             else:
                 unit.attack_timer_s -= dt
                 if unit.attack_timer_s <= 0:
@@ -842,9 +866,8 @@ class Battlefield:
                     unit.attack_timer_s = self._effective_attack_cooldown(unit)
                     if target.hp <= 0:
                         self._on_unit_death(target)
-        elif elite_zone is not None:
-            if unit.pos != elite_zone[1]:
-                unit.pos = elite_zone[1]
+        elif zone_rect is not None and zone_home is not None:
+            self._move_towards(unit, zone_home, dt)
         else:
             if unit.move_speed_px_s > 0 and unit.lane in config.LANE_WAYPOINTS:
                 self._advance_waypoint(unit, dt)
