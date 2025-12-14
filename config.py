@@ -179,6 +179,10 @@ AI_PURCHASE_COOLDOWNS = {
     "CAVALRY": 3.0,
 }
 
+# Ability timings
+BULWARK_TAUNT_INTERVAL_S = 5.0
+BULWARK_TAUNT_TARGETS = 3
+
 # Out-of-combat regeneration
 REGEN_OUT_OF_COMBAT_DELAY_S = 5.0
 REGEN_INTERVAL_S = 5.0
@@ -210,6 +214,28 @@ UNIT_STATS = {
         "respawn_delay_s": 16,
         "cost": 45,
         "gold_reward": 10,
+    },
+    "BULWARK": {
+        "max_hp": 140,
+        "damage": 2,
+        "attack_range_px": 22,
+        "aggro_range_px": 160,
+        "attack_cooldown_s": 1.25,
+        "move_speed_px_s": 60,
+        "respawn_delay_s": 18,
+        "cost": 60,
+        "gold_reward": 14,
+    },
+    "HEALER": {
+        "max_hp": 50,
+        "damage": 3,
+        "attack_range_px": 24,
+        "aggro_range_px": 150,
+        "attack_cooldown_s": 1.10,
+        "move_speed_px_s": 70,
+        "respawn_delay_s": 18,
+        "cost": 50,
+        "gold_reward": 9,
     },
     "CAVALRY": {
         "max_hp": 55,

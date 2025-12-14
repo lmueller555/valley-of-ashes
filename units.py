@@ -41,6 +41,7 @@ class Unit:
     out_of_combat_time_s: float = 0.0
     regen_timer_s: float = 0.0
     time_off_lane_s: float = 0.0
+    taunt_timer_s: float = 0.0
 
     def is_alive(self) -> bool:
         return self.state not in {"DEAD", "RESPAWNING"}
@@ -421,6 +422,27 @@ class Battlefield:
                 best_dist2 = dist2
         return best_id
 
+    def _cast_bulwark_taunt(self, bulwark: Unit):
+        if bulwark.unit_type != "BULWARK":
+            return
+        candidates = self.spatial.query_radius(bulwark.pos, bulwark.aggro_range_px)
+        bx, by = bulwark.pos
+        enemies: List[Tuple[float, Unit]] = []
+        for cid in candidates:
+            if cid == bulwark.unit_id:
+                continue
+            enemy = self.units.get(cid)
+            if enemy is None or not enemy.is_alive() or enemy.faction == bulwark.faction:
+                continue
+            dx = enemy.pos[0] - bx
+            dy = enemy.pos[1] - by
+            dist2 = dx * dx + dy * dy
+            if dist2 <= bulwark.aggro_range_px * bulwark.aggro_range_px:
+                enemies.append((dist2, enemy))
+        enemies.sort(key=lambda item: (item[0], item[1].hp, item[1].unit_id))
+        for _, enemy in enemies[: config.BULWARK_TAUNT_TARGETS]:
+            enemy.target_id = bulwark.unit_id
+
     def _on_unit_death(self, unit: Unit):
         if unit.state in {"DEAD", "RESPAWNING"}:
             return
@@ -539,6 +561,12 @@ class Battlefield:
             return
 
         self._recover_stuck_unit(unit, dt)
+
+        if unit.unit_type == "BULWARK":
+            unit.taunt_timer_s += dt
+            while unit.taunt_timer_s >= config.BULWARK_TAUNT_INTERVAL_S:
+                unit.taunt_timer_s -= config.BULWARK_TAUNT_INTERVAL_S
+                self._cast_bulwark_taunt(unit)
 
         elite_zone = self._elite_aggro_zone(unit)
 
