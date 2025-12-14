@@ -387,9 +387,9 @@ def main():
     battlefield = Battlefield(geom)
     ai = MacroAI(battlefield)
     battlefield.ai_controller = ai
-    starting_counts = {"GRUNT": 24, "LIEUTENANT": 6, "CAVALRY": 2}
-    battlefield.seed_wave("PLAYER", starting_counts)
-    battlefield.seed_wave("ENEMY", starting_counts)
+    starting_counts = {"GRUNT": 10, "LIEUTENANT": 5, "HEALER": 1, "BULWARK": 1}
+    battlefield.seed_lane_wave("PLAYER", starting_counts)
+    battlefield.seed_lane_wave("ENEMY", starting_counts)
     buttons = build_purchase_buttons(font)
     debug_overlay = False
     state_cache = {
