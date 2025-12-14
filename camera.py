@@ -28,8 +28,18 @@ class Camera:
     def _clamp_to_bounds(self):
         half_w = config.MAP_VIEW_RECT.width / (2 * self.zoom)
         half_h = config.MAP_VIEW_RECT.height / (2 * self.zoom)
-        self.x = max(half_w, min(config.MAP_W - half_w, self.x))
-        self.y = max(half_h, min(config.MAP_H - half_h, self.y))
+        # If the current zoom level makes the viewport larger than the map
+        # dimension, lock the camera to the center instead of letting the
+        # min/max swap and push the view off-center.
+        if half_w >= config.MAP_W / 2:
+            self.x = config.MAP_W / 2
+        else:
+            self.x = max(half_w, min(config.MAP_W - half_w, self.x))
+
+        if half_h >= config.MAP_H / 2:
+            self.y = config.MAP_H / 2
+        else:
+            self.y = max(half_h, min(config.MAP_H - half_h, self.y))
 
     def pan(self, dx, dy):
         self.x += dx
