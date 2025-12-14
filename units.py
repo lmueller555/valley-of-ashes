@@ -756,13 +756,7 @@ class Battlefield:
                 radius = max(2, int(base_radius * zoom))
             pygame.draw.circle(surface, color, (int(sx), int(sy)), radius)
 
-            show_health = False
-            if zoom >= 1.3:
-                show_health = True
-            elif zoom >= 0.75 and unit.unit_type in {"BOSS", "CAPTAIN"}:
-                show_health = True
-
-            if show_health and unit.hp < unit.max_hp:
+            if unit.hp < unit.max_hp:
                 ratio = unit.hp / unit.max_hp if unit.max_hp else 0
                 bar_width = {
                     "BOSS": 30,
