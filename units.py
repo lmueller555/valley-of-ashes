@@ -659,16 +659,29 @@ class Battlefield:
         for unit in self.units.values():
             if not unit.is_alive():
                 continue
+
             sx, sy = camera.world_to_screen(unit.pos)
             color = config.COLOR_PLAYER if unit.faction == "PLAYER" else config.COLOR_ENEMY
+
+            # Zoom-based level of detail per ui_guidance.
+            zoom = camera.zoom
             base_radius = {
                 "BOSS": 9,
                 "CAPTAIN": 7,
             }.get(unit.unit_type, 5)
-            radius = max(2, int(base_radius * camera.zoom))
+            if zoom < 0.75:
+                radius = max(2, int(3 * zoom))
+            else:
+                radius = max(2, int(base_radius * zoom))
             pygame.draw.circle(surface, color, (int(sx), int(sy)), radius)
 
-            if unit.hp < unit.max_hp:
+            show_health = False
+            if zoom >= 1.3:
+                show_health = True
+            elif zoom >= 0.75 and unit.unit_type in {"BOSS", "CAPTAIN"}:
+                show_health = True
+
+            if show_health and unit.hp < unit.max_hp:
                 ratio = unit.hp / unit.max_hp if unit.max_hp else 0
                 bar_width = {
                     "BOSS": 30,
@@ -678,10 +691,10 @@ class Battlefield:
                     "BOSS": 5,
                     "CAPTAIN": 4,
                 }.get(unit.unit_type, 3)
-                bar_width = max(6, int(bar_width * camera.zoom))
-                bar_height = max(2, int(bar_height * camera.zoom))
+                bar_width = max(6, int(bar_width * zoom))
+                bar_height = max(2, int(bar_height * zoom))
                 bar_x = int(sx - bar_width / 2)
-                bar_y = int(sy - radius - bar_height - max(2, int(3 * camera.zoom)))
+                bar_y = int(sy - radius - bar_height - max(2, int(3 * zoom)))
 
                 if ratio >= 0.75:
                     bar_color = config.COLOR_HEALTH_GREEN
