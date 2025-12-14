@@ -43,6 +43,7 @@ class Unit:
     time_off_lane_s: float = 0.0
     heal_timer_s: float = 0.0
     heal_anim_timer_s: float = 0.0
+    taunt_timer_s: float = 0.0
 
     def is_alive(self) -> bool:
         return self.state not in {"DEAD", "RESPAWNING"}
@@ -202,6 +203,13 @@ class Battlefield:
                 lane = lanes[lane_index % len(lanes)]
                 lane_index += 1
                 self.spawn_unit(faction, unit_type, lane)
+
+    def seed_lane_wave(self, faction: str, lane_counts: Dict[str, int]):
+        lanes = ["WEST", "CENTER", "EAST"]
+        for lane in lanes:
+            for unit_type, count in lane_counts.items():
+                for _ in range(count):
+                    self.spawn_unit(faction, unit_type, lane)
 
     def _next_lane(self) -> str:
         lanes = ["WEST", "CENTER", "EAST"]
@@ -563,11 +571,44 @@ class Battlefield:
         if healed_any:
             unit.heal_anim_timer_s = config.HEALER_HEAL_ANIM_DURATION_S
 
+    def _taunt_nearest_enemies(self, unit: Unit):
+        candidates = self.spatial.query_radius(unit.pos, unit.aggro_range_px)
+        enemies: List[Tuple[float, Unit]] = []
+        ux, uy = unit.pos
+
+        for cid in candidates:
+            if cid == unit.unit_id:
+                continue
+            enemy = self.units.get(cid)
+            if enemy is None or not enemy.is_alive() or enemy.faction == unit.faction:
+                continue
+            dx = enemy.pos[0] - ux
+            dy = enemy.pos[1] - uy
+            dist2 = dx * dx + dy * dy
+            if dist2 <= unit.aggro_range_px * unit.aggro_range_px:
+                enemies.append((dist2, enemy))
+
+        enemies.sort(key=lambda item: (item[0], item[1].unit_id))
+        for _, enemy in enemies[: config.BULWARK_TAUNT_TARGETS]:
+            enemy.target_id = unit.unit_id
+
+    def _update_bulwark(self, unit: Unit, dt: float):
+        if unit.unit_type != "BULWARK":
+            return
+
+        unit.taunt_timer_s += dt
+        if unit.taunt_timer_s < config.BULWARK_TAUNT_COOLDOWN_S:
+            return
+
+        unit.taunt_timer_s -= config.BULWARK_TAUNT_COOLDOWN_S
+        self._taunt_nearest_enemies(unit)
+
     def _update_unit(self, unit: Unit, dt: float):
         if unit.state in {"DEAD", "RESPAWNING"}:
             return
 
         self._recover_stuck_unit(unit, dt)
+        self._update_bulwark(unit, dt)
         self._update_healer(unit, dt)
 
         elite_zone = self._elite_aggro_zone(unit)
@@ -635,6 +676,7 @@ class Battlefield:
         unit.regen_timer_s = 0.0
         unit.heal_timer_s = 0.0
         unit.heal_anim_timer_s = 0.0
+        unit.taunt_timer_s = 0.0
 
     def _update_graveyard_respawn_progress(self, gy: map_data.Graveyard):
         if not gy.waiting_units:

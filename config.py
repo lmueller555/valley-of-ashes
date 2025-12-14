@@ -191,6 +191,10 @@ HEALER_HEAL_COOLDOWN_S = 5.0
 HEALER_HEAL_RADIUS_PX = 200
 HEALER_HEAL_ANIM_DURATION_S = 0.65
 
+# Bulwark ability
+BULWARK_TAUNT_COOLDOWN_S = 5.0
+BULWARK_TAUNT_TARGETS = 3
+
 # Units can only respawn a limited number of times before being removed from the game.
 UNIT_MAX_RESPAWNS = 10
 
@@ -217,6 +221,17 @@ UNIT_STATS = {
         "respawn_delay_s": 16,
         "cost": 45,
         "gold_reward": 10,
+    },
+    "BULWARK": {
+        "max_hp": 140,
+        "damage": 2,
+        "attack_range_px": 22,
+        "aggro_range_px": 160,
+        "attack_cooldown_s": 1.25,
+        "move_speed_px_s": 60,
+        "respawn_delay_s": 20,
+        "cost": 80,
+        "gold_reward": 18,
     },
     "CAVALRY": {
         "max_hp": 55,
