@@ -283,7 +283,17 @@ class Battlefield:
                 return bunker
         return None
 
-    def _select_captain_target(self, unit: Unit, bunker: map_data.Bunker) -> Optional[UnitId]:
+    def _elite_aggro_zone(self, unit: Unit) -> Optional[Tuple[pygame.Rect, Tuple[float, float]]]:
+        if unit.unit_type == "CAPTAIN":
+            bunker = self._bunker_for_id(unit.structure_id)
+            if bunker is not None:
+                return bunker.rect, bunker.center
+        elif unit.unit_type == "BOSS":
+            keep_rect = config.S_KEEP_RECT if unit.faction == "PLAYER" else config.N_KEEP_RECT
+            return keep_rect, keep_rect.center
+        return None
+
+    def _select_elite_target(self, unit: Unit, zone: pygame.Rect) -> Optional[UnitId]:
         best_id = None
         best_dist2 = None
         ux, uy = unit.pos
@@ -291,7 +301,7 @@ class Battlefield:
             if not enemy.is_alive() or enemy.faction == unit.faction:
                 continue
             ex, ey = enemy.pos
-            if not bunker.rect.collidepoint(ex, ey):
+            if not zone.collidepoint(ex, ey):
                 continue
             dist2 = (ex - ux) * (ex - ux) + (ey - uy) * (ey - uy)
             if best_id is None or dist2 < best_dist2:
@@ -411,7 +421,7 @@ class Battlefield:
         if unit.state in {"DEAD", "RESPAWNING"}:
             return
 
-        bunker = self._bunker_for_id(unit.structure_id) if unit.unit_type == "CAPTAIN" else None
+        elite_zone = self._elite_aggro_zone(unit)
 
         if unit.target_id is not None:
             target = self.units.get(unit.target_id)
@@ -422,15 +432,14 @@ class Battlefield:
                 dx = tx - unit.pos[0]
                 dy = ty - unit.pos[1]
                 dist2 = dx * dx + dy * dy
-                target_inside_bunker = bunker is not None and bunker.rect.collidepoint(tx, ty)
-                if not target_inside_bunker and dist2 > unit.aggro_range_px * unit.aggro_range_px:
+                target_inside_zone = elite_zone is not None and elite_zone[0].collidepoint(tx, ty)
+                if not target_inside_zone and dist2 > unit.aggro_range_px * unit.aggro_range_px:
                     unit.target_id = None
 
-        bunker_target = None
-        if unit.unit_type == "CAPTAIN" and bunker:
-            bunker_target = self._select_captain_target(unit, bunker)
-        if bunker_target is not None:
-            unit.target_id = bunker_target
+        if elite_zone is not None:
+            elite_target = self._select_elite_target(unit, elite_zone[0])
+            if elite_target is not None:
+                unit.target_id = elite_target
         elif unit.target_id is None:
             unit.target_id = self._select_target(unit)
 
@@ -455,6 +464,9 @@ class Battlefield:
                     unit.attack_timer_s = self._effective_attack_cooldown(unit)
                     if target.hp <= 0:
                         self._on_unit_death(target)
+        elif elite_zone is not None:
+            if unit.pos != elite_zone[1]:
+                unit.pos = elite_zone[1]
         else:
             if unit.move_speed_px_s > 0 and unit.lane in config.LANE_WAYPOINTS:
                 self._advance_waypoint(unit, dt)
