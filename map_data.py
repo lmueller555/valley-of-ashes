@@ -109,15 +109,33 @@ def build_bunkers() -> List[Bunker]:
         x0, y0, w, h = rect
         x1 = x0 + w
         y1 = y0 + h
-        gate_x0 = x0 + (w - config.BUNKER_GATE_WIDTH) // 2
-        gate_x1 = gate_x0 + config.BUNKER_GATE_WIDTH
+
+        gate_half_width = config.BUNKER_GATE_WIDTH // 2
+        gates = []
+        for center_x in config.BUNKER_GATE_CENTERLINES:
+            gate_start = max(x0, center_x - gate_half_width)
+            gate_end = min(x1, center_x + gate_half_width)
+            if gate_end > gate_start:
+                gates.append((gate_start, gate_end))
+
+        def horizontal_segments(y: float) -> List[pygame.Rect]:
+            segments = []
+            cursor = x0
+            for gate_start, gate_end in sorted(gates):
+                if gate_start > cursor:
+                    segments.append(
+                        pygame.Rect(cursor, y, gate_start - cursor, config.BUNKER_WALL_THICKNESS)
+                    )
+                cursor = max(cursor, gate_end)
+            if cursor < x1:
+                segments.append(pygame.Rect(cursor, y, x1 - cursor, config.BUNKER_WALL_THICKNESS))
+            return segments
+
         walls = [
             pygame.Rect(x0, y0, config.BUNKER_WALL_THICKNESS, h),
             pygame.Rect(x1 - config.BUNKER_WALL_THICKNESS, y0, config.BUNKER_WALL_THICKNESS, h),
-            pygame.Rect(x0, y0, gate_x0 - x0, config.BUNKER_WALL_THICKNESS),
-            pygame.Rect(gate_x1, y0, x1 - gate_x1, config.BUNKER_WALL_THICKNESS),
-            pygame.Rect(x0, y1 - config.BUNKER_WALL_THICKNESS, gate_x0 - x0, config.BUNKER_WALL_THICKNESS),
-            pygame.Rect(gate_x1, y1 - config.BUNKER_WALL_THICKNESS, x1 - gate_x1, config.BUNKER_WALL_THICKNESS),
+            *horizontal_segments(y0),
+            *horizontal_segments(y1 - config.BUNKER_WALL_THICKNESS),
         ]
         return walls
 
