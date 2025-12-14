@@ -132,11 +132,10 @@ def build_bunkers() -> List[Bunker]:
             wall_rects=build_wall_segments(config.S_BUNKER_RECT),
         ),
     ]
-    north_rect = config.S_BUNKER_RECT.copy()
-    north_rect.y = config.mirror_y(config.S_BUNKER_RECT.bottom)
-    north_center = (config.S_BUNKER_CENTER[0], config.mirror_y(config.S_BUNKER_CENTER[1]))
-    north_approach_south = (config.S_BUNKER_APPROACH_SOUTH[0], config.mirror_y(config.S_BUNKER_APPROACH_SOUTH[1]))
-    north_approach_north = (config.S_BUNKER_APPROACH_NORTH[0], config.mirror_y(config.S_BUNKER_APPROACH_NORTH[1]))
+    north_rect = config.N_BUNKER_RECT.copy()
+    north_center = config.N_BUNKER_CENTER
+    north_approach_south = config.N_BUNKER_APPROACH_SOUTH
+    north_approach_north = config.N_BUNKER_APPROACH_NORTH
     bunkers.append(
         Bunker(
             "N_BUNKER",

@@ -1,5 +1,6 @@
 import pygame
 
+
 # Screen and UI layout
 SCREEN_WIDTH = 1600
 SCREEN_HEIGHT = 900
@@ -12,6 +13,15 @@ RIBBON_RECT = pygame.Rect(0, MAP_VIEW_HEIGHT, SCREEN_WIDTH, RIBBON_HEIGHT)
 MAP_W = 3000
 MAP_H = 4200
 MID_Y = MAP_H // 2
+
+
+def mirror_y(y: float) -> float:
+    return MAP_H - y
+
+
+def mirrored_position(pos):
+    x, y = pos
+    return x, mirror_y(y)
 
 # Colors
 COLOR_BG = (22, 22, 24)
@@ -34,6 +44,7 @@ RIFT_TOP = 1980
 RIFT_BOTTOM = 2220
 CROSSING_W = 420
 CROSSING_H = RIFT_BOTTOM - RIFT_TOP
+LANE_WIDTH = 320
 X_W = 750
 X_C = 1500
 X_E = 2250
@@ -90,6 +101,7 @@ GRAVEYARDS_NORTH = {
 # Tower data
 TOWER_CORE_IMPASSABLE_RADIUS_PX = 22
 TOWER_CAPTURE_RADIUS_PX = 120
+TOWER_CONTEST_RADIUS_PX = 140
 TOWER_POSITIONS_SOUTH = {
     "T_S_W_REAR": (950, 3300),
     "T_S_E_REAR": (2050, 3300),
@@ -110,6 +122,10 @@ S_BUNKER_RECT = pygame.Rect(1100, 2860, 800, 320)
 S_BUNKER_CENTER = (1500, 3020)
 S_BUNKER_APPROACH_SOUTH = (1500, 3250)
 S_BUNKER_APPROACH_NORTH = (1500, 2790)
+N_BUNKER_RECT = pygame.Rect(S_BUNKER_RECT.x, mirror_y(S_BUNKER_RECT.bottom), S_BUNKER_RECT.w, S_BUNKER_RECT.h)
+N_BUNKER_CENTER = (1500, mirror_y(S_BUNKER_CENTER[1]))
+N_BUNKER_APPROACH_SOUTH = (S_BUNKER_APPROACH_SOUTH[0], mirror_y(S_BUNKER_APPROACH_SOUTH[1]))
+N_BUNKER_APPROACH_NORTH = (S_BUNKER_APPROACH_NORTH[0], mirror_y(S_BUNKER_APPROACH_NORTH[1]))
 
 # Starting resources
 STARTING_GOLD_PLAYER = 120
@@ -122,15 +138,6 @@ PAN_SPEED = 600  # pixels per second for keyboard WASD
 
 # Debug
 SHOW_DEBUG = True
-
-
-def mirror_y(y: float) -> float:
-    return MAP_H - y
-
-
-def mirrored_position(pos):
-    x, y = pos
-    return x, mirror_y(y)
 
 
 def build_north_towers():
