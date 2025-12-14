@@ -230,7 +230,7 @@ UNIT_STATS = {
         "attack_cooldown_s": 1.25,
         "move_speed_px_s": 60,
         "respawn_delay_s": 20,
-        "cost": 80,
+        "cost": 125,
         "gold_reward": 18,
     },
     "CAVALRY": {
