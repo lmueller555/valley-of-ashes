@@ -40,6 +40,7 @@ class Unit:
     base_damage: Optional[float] = None
     out_of_combat_time_s: float = 0.0
     regen_timer_s: float = 0.0
+    time_off_lane_s: float = 0.0
 
     def is_alive(self) -> bool:
         return self.state not in {"DEAD", "RESPAWNING"}
@@ -255,6 +256,54 @@ class Battlefield:
         boss.max_hp = boss.base_max_hp * mult if boss.base_max_hp else boss.max_hp
         boss.damage = boss.base_damage * mult if boss.base_damage else boss.damage
         boss.hp = max(1, min(boss.max_hp, ratio * boss.max_hp))
+
+    def _is_near_lane(self, pos: Tuple[float, float]) -> bool:
+        lane_centers = (config.X_W, config.X_C, config.X_E)
+        return any(abs(pos[0] - cx) <= config.LANE_PROXIMITY_THRESHOLD_PX for cx in lane_centers)
+
+    def _nearest_lane_point(self, unit: Unit) -> Optional[Tuple[str, Tuple[float, float]]]:
+        best_lane: Optional[str] = None
+        best_point: Optional[Tuple[float, float]] = None
+        best_d2: Optional[float] = None
+
+        for lane, _ in config.LANE_WAYPOINTS.items():
+            waypoints = self._lane_waypoints(unit.faction, lane)
+            for pt in waypoints:
+                dx = pt[0] - unit.pos[0]
+                dy = pt[1] - unit.pos[1]
+                d2 = dx * dx + dy * dy
+                if best_d2 is None or d2 < best_d2:
+                    best_d2 = d2
+                    best_lane = lane
+                    best_point = pt
+
+        if best_lane is None or best_point is None:
+            return None
+        return best_lane, best_point
+
+    def _recover_stuck_unit(self, unit: Unit, dt: float):
+        if unit.move_speed_px_s <= 0 or unit.lane not in config.LANE_WAYPOINTS:
+            unit.time_off_lane_s = 0.0
+            return
+
+        if self._is_near_lane(unit.pos):
+            unit.time_off_lane_s = 0.0
+            return
+
+        unit.time_off_lane_s += dt
+        if unit.time_off_lane_s < config.STUCK_LANE_TIMEOUT_S:
+            return
+
+        nearest = self._nearest_lane_point(unit)
+        if nearest is None:
+            return
+
+        new_lane, dest = nearest
+        unit.pos = dest
+        unit.lane = new_lane
+        unit.time_off_lane_s = 0.0
+        unit.target_id = None
+        self._reset_waypoint_progress(unit)
 
     def _apply_separation(self, dt: float):
         for unit in self.units.values():
@@ -481,6 +530,8 @@ class Battlefield:
     def _update_unit(self, unit: Unit, dt: float):
         if unit.state in {"DEAD", "RESPAWNING"}:
             return
+
+        self._recover_stuck_unit(unit, dt)
 
         elite_zone = self._elite_aggro_zone(unit)
 
