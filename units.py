@@ -146,8 +146,8 @@ class Battlefield:
         pts = config.LANE_WAYPOINTS[lane]
         if faction == "PLAYER":
             return pts
-        # Mirror for enemy marching south.
-        mirrored = [config.mirrored_position(p) for p in reversed(pts)]
+        # Mirror for enemy marching south (keep waypoint order aligned to advance southward).
+        mirrored = [config.mirrored_position(p) for p in pts]
         return mirrored
 
     def spawn_unit(self, faction: str, unit_type: str, lane: str, pos: Optional[Tuple[float, float]] = None) -> Unit:
@@ -177,6 +177,7 @@ class Battlefield:
             gold_reward=stats["gold_reward"],
         )
         self.units[uid] = unit
+        self._reset_waypoint_progress(unit)
         return unit
 
     def seed_wave(self, faction: str, counts: Dict[str, int]):
@@ -397,11 +398,33 @@ class Battlefield:
             self.gold[killer_faction] = self.gold.get(killer_faction, 0) + unit.gold_reward
             self.kills[killer_faction] = self.kills.get(killer_faction, 0) + 1
 
+    def _reset_waypoint_progress(self, unit: Unit):
+        if unit.lane not in config.LANE_WAYPOINTS:
+            return
+        waypoints = self._lane_waypoints(unit.faction, unit.lane)
+        if not waypoints:
+            return
+        direction = 1 if unit.faction == "ENEMY" else -1  # Enemy marches south (increasing y)
+        pos_x, pos_y = unit.pos
+
+        def is_forward(idx: int) -> bool:
+            wp_y = waypoints[idx][1]
+            return (wp_y - pos_y) * direction >= -config.LANE_WIDTH * 0.25
+
+        forward_indices = [idx for idx in range(len(waypoints)) if is_forward(idx)]
+        candidates = forward_indices if forward_indices else range(len(waypoints))
+        best = min(
+            candidates,
+            key=lambda idx: (waypoints[idx][0] - pos_x) ** 2 + (waypoints[idx][1] - pos_y) ** 2,
+        )
+        unit._wp_index = best
+
     def _advance_waypoint(self, unit: Unit, dt: float):
         waypoints = self._lane_waypoints(unit.faction, unit.lane)
-        # Determine current target waypoint index based on progress stored in leash_anchor.
         if not hasattr(unit, "_wp_index"):
-            unit._wp_index = 0
+            self._reset_waypoint_progress(unit)
+        if not hasattr(unit, "_wp_index"):
+            return
         if unit._wp_index >= len(waypoints):
             return
         target = waypoints[unit._wp_index]
@@ -507,6 +530,7 @@ class Battlefield:
                     unit.state = "DEAD"
                     continue
                 self._respawn_unit_at_graveyard(unit, target_gy)
+                self._reset_waypoint_progress(unit)
 
     def _update_tower_states(self, dt: float):
         for tower in self.geom.towers:
