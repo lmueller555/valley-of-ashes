@@ -1,6 +1,5 @@
 import pygame
 
-
 # Screen and UI layout
 SCREEN_WIDTH = 1600
 SCREEN_HEIGHT = 900
@@ -178,6 +177,7 @@ UNIT_STATS = {
 
 SEPARATION_RADIUS_PX = 14
 SEPARATION_PUSH_LIMIT = 0.35  # fraction of move speed
+SPATIAL_HASH_CELL_SIZE = 180
 
 
 def build_north_towers():
