@@ -139,6 +139,46 @@ PAN_SPEED = 600  # pixels per second for keyboard WASD
 # Debug
 SHOW_DEBUG = True
 
+# Unit stats (from unit_guidance)
+UNIT_STATS = {
+    "GRUNT": {
+        "max_hp": 28,
+        "damage": 3,
+        "attack_range_px": 18,
+        "aggro_range_px": 140,
+        "attack_cooldown_s": 1.10,
+        "move_speed_px_s": 72,
+        "respawn_delay_s": 10,
+        "cost": 10,
+        "gold_reward": 3,
+    },
+    "LIEUTENANT": {
+        "max_hp": 70,
+        "damage": 8,
+        "attack_range_px": 22,
+        "aggro_range_px": 160,
+        "attack_cooldown_s": 1.25,
+        "move_speed_px_s": 66,
+        "respawn_delay_s": 16,
+        "cost": 45,
+        "gold_reward": 10,
+    },
+    "CAVALRY": {
+        "max_hp": 55,
+        "damage": 10,
+        "attack_range_px": 20,
+        "aggro_range_px": 170,
+        "attack_cooldown_s": 1.35,
+        "move_speed_px_s": 108,
+        "respawn_delay_s": 20,
+        "cost": 70,
+        "gold_reward": 12,
+    },
+}
+
+SEPARATION_RADIUS_PX = 14
+SEPARATION_PUSH_LIMIT = 0.35  # fraction of move speed
+
 
 def build_north_towers():
     return {key.replace("S", "N"): (pos[0], mirror_y(pos[1])) for key, pos in TOWER_POSITIONS_SOUTH.items()}

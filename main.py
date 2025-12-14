@@ -4,6 +4,7 @@ import config
 import map_data
 from camera import Camera
 from map_data import build_map_geometry
+from units import Battlefield
 
 
 def world_rect_to_screen(camera: Camera, rect: pygame.Rect) -> pygame.Rect:
@@ -147,6 +148,14 @@ def draw_debug(surface, font, camera: Camera, geom, toggle, debug_state):
     passable = map_data.is_point_passable(cursor_world, geom)
     tower_states = ", ".join([f"{t.tower_id}:{t.state[:3]}" for t in geom.towers])
     bunker_states = ", ".join([f"{b.bunker_id}:{b.state[:3]}" for b in geom.bunkers])
+    battlefield: Battlefield = debug_state.get("battlefield")
+    unit_counts = {"PLAYER": 0, "ENEMY": 0}
+    respawns = 0
+    if battlefield:
+        for u in battlefield.units.values():
+            if u.is_alive():
+                unit_counts[u.faction] += 1
+        respawns = len(battlefield.respawn_queue)
     lines = [
         f"Camera: ({camera.x:.1f}, {camera.y:.1f})",
         f"Zoom: {camera.zoom:.2f}",
@@ -161,6 +170,8 @@ def draw_debug(surface, font, camera: Camera, geom, toggle, debug_state):
         f"Bunker states: {bunker_states}",
         f"Graveyards: {len(geom.graveyards)}",
         f"Impassable overlay: {'ON' if debug_state.get('show_impassable') else 'OFF'}",
+        f"Units — Player: {unit_counts['PLAYER']}, Enemy: {unit_counts['ENEMY']}",
+        f"Respawn queue: {respawns}",
     ]
     y = 10
     for line in lines:
@@ -206,8 +217,11 @@ def main():
 
     camera = Camera()
     geom = build_map_geometry()
+    battlefield = Battlefield(geom)
+    battlefield.seed_wave("PLAYER", {"GRUNT": 12, "LIEUTENANT": 4})
+    battlefield.seed_wave("ENEMY", {"GRUNT": 12, "LIEUTENANT": 4})
     debug_overlay = False
-    state_cache = {"last_mouse": None, "show_impassable": False}
+    state_cache = {"last_mouse": None, "show_impassable": False, "battlefield": battlefield}
 
     running = True
     while running:
@@ -231,8 +245,11 @@ def main():
                     camera.zoom_at((mx, my), zoom_factor)
         handle_input(camera, dt, state_cache)
 
+        battlefield.update(dt)
+
         screen.fill(config.COLOR_BG)
         draw_map(screen, camera, geom)
+        battlefield.draw(screen, camera)
         if state_cache.get("show_impassable"):
             draw_impassable_overlay(screen, camera, geom)
         draw_ribbon(screen, font)
