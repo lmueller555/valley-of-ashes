@@ -154,6 +154,10 @@ West Lane Waypoints (South→North)
 
 (750, 420)
 
+(1100, 300) (turn toward keep entry)
+
+(1500, 210) (inside boss keep)
+
 Center Lane Waypoints (South→North)
 
 (1500, 3600)
@@ -197,6 +201,10 @@ East Lane Waypoints (South→North)
 (2250, 600)
 
 (2250, 420)
+
+(1900, 300) (turn toward keep entry)
+
+(1500, 210) (inside boss keep)
 
 6.3 Base Gate Lines (Wide Entry)
 
