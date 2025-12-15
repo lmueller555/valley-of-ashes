@@ -1,4 +1,5 @@
 import math
+import random
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -672,9 +673,9 @@ class Battlefield:
 
     def _select_target(self, unit: Unit) -> Optional[UnitId]:
         candidates = self.spatial.query_radius(unit.pos, unit.aggro_range_px)
-        best_id = None
-        best_dist2 = None
+        enemies: List[Tuple[float, Unit]] = []
         ux, uy = unit.pos
+
         for cid in candidates:
             if cid == unit.unit_id:
                 continue
@@ -686,15 +687,14 @@ class Battlefield:
             dist2 = dx * dx + dy * dy
             if dist2 > unit.aggro_range_px * unit.aggro_range_px:
                 continue
-            if best_id is None or dist2 < best_dist2 or (
-                dist2 == best_dist2
-                and (enemy.hp < self.units[best_id].hp or (
-                    enemy.hp == self.units[best_id].hp and enemy.unit_id < best_id
-                ))
-            ):
-                best_id = enemy.unit_id
-                best_dist2 = dist2
-        return best_id
+            enemies.append((dist2, enemy))
+
+        if not enemies:
+            return None
+
+        enemies.sort(key=lambda item: (item[0], item[1].unit_id))
+        _, chosen = random.choice(enemies[:10])
+        return chosen.unit_id
 
     def _on_unit_death(self, unit: Unit):
         if unit.state in {"DEAD", "RESPAWNING"}:
