@@ -1061,15 +1061,28 @@ class Battlefield:
         self._update_graveyards(dt)
 
     def draw(self, surface, camera):
+        zoom = camera.zoom
+        half_w = config.MAP_VIEW_RECT.width / (2 * zoom)
+        half_h = config.MAP_VIEW_RECT.height / (2 * zoom)
+        # Padding to keep health bars and heal rings visible near edges.
+        margin_world = 120 / zoom
+        view_min_x = camera.x - half_w - margin_world
+        view_max_x = camera.x + half_w + margin_world
+        view_min_y = camera.y - half_h - margin_world
+        view_max_y = camera.y + half_h + margin_world
+
         for unit in self.units.values():
             if not unit.is_alive():
+                continue
+
+            ux, uy = unit.pos
+            if ux < view_min_x or ux > view_max_x or uy < view_min_y or uy > view_max_y:
                 continue
 
             sx, sy = camera.world_to_screen(unit.pos)
             color = config.COLOR_PLAYER if unit.faction == "PLAYER" else config.COLOR_ENEMY
 
             # Zoom-based level of detail per ui_guidance.
-            zoom = camera.zoom
             base_radius = {
                 "BOSS": 9,
                 "CAPTAIN": 7,
